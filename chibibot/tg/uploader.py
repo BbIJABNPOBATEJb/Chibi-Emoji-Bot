@@ -26,6 +26,7 @@ class Item:
     slim: bool | None
     settings: dict
     emoji: str
+    keyword: str | None = None   # search keyword; defaults to the label
 
 
 @dataclass
@@ -70,7 +71,7 @@ async def render_and_upload(app: App, pack: Pack, items: list[Item], actor_id: i
                 if fut is None:
                     raise StickerError("файл скина потерялся")
                 fmt, blob, thumb = await fut
-                st = await app.stickers.add(pack, fmt, blob, it.emoji, [it.label])
+                st = await app.stickers.add(pack, fmt, blob, it.emoji, [it.keyword or it.label])
                 e = await app.db.add_emoji(pack.id, it.label, it.source, it.sha1, it.slim, it.settings,
                                            fmt == "video", it.emoji, st.file_id, st.file_unique_id,
                                            st.custom_emoji_id, actor_id)

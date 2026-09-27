@@ -12,6 +12,7 @@ import asyncio
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -290,6 +291,20 @@ def skin_zip(skins: dict[str, bytes], txt: str | None = None) -> bytes:
 CHATS: list = []
 
 
+async def pick_anims(chat: "Chat", wanted: set[str]) -> None:
+    """Tick exactly `wanted` (Russian labels) on the multi-select animation step."""
+    for turn_on in (True, False):  # switch on first so the last ticked one is never removed
+        for _ in range(40):
+            rows = chat.last()["reply_markup"]["inline_keyboard"]
+            toggles = [b for row in rows for b in row if re.match(r"^(✅|▫️) \d+\. ", b["text"])]
+            todo = next((b for b in toggles
+                         if (b["text"].split(". ", 1)[1] in wanted) == turn_on
+                         and b["text"].startswith("✅") != turn_on), None)
+            if todo is None:
+                break
+            await chat.click(todo["text"])
+
+
 def check(cond, what):
     print(("  ok  " if cond else "  FAIL") + " " + what)
     if not cond:
@@ -367,9 +382,10 @@ async def main():
     await user.click("2. Машет")
     check("Кадр" in user.last()["caption"], "bust step")
     await user.click("1. Во весь рост")
-    check("Анимация" in user.last()["caption"] and "animation" in user.last(), "animation step is animated")
+    check("Анимации" in user.last()["caption"] and "animation" in user.last(), "animation step is animated")
     (out / "step_anim.mp4").write_bytes(fake.media[user.last()["message_id"]])
-    await user.click("3. Ходьба")
+    await pick_anims(user, {"Ходьба"})
+    await user.click("Далее")
     check("Камера" in user.last()["caption"], "camera step")
     await user.click("3. 3/4 слева")
     check("Части тела" in user.last()["caption"], "parts step")
@@ -407,7 +423,8 @@ async def main():
     await user.click("1. Классика")
     await user.click("2. Стив")
     await user.click("🎬 Анимация")
-    await user.click("1. Без анимации")
+    await pick_anims(user, {"Без анимации"})
+    await user.click("К итогу")
     check("Итог" in user.last()["caption"], "jump from hub returns to hub")
     await user.click("Создать")
     tg = fake.sets[pack.name]
@@ -515,6 +532,35 @@ async def main():
     await adm.click("Пользователи")
     check("Player" in adm.last()["text"] or "@player" in adm.last()["text"], "users list")
 
+    print("== several animations per skin at once (admin)")
+    await adm.text("/new")
+    await adm.click("😀 Эмодзи-пак")
+    await adm.text("Мульти")
+    await adm.text("Notch, jeb_")
+    await adm.click("Далее: настройка")
+    await adm.click("1. Классика")
+    await adm.click("1. Авто")
+    await adm.click("🎬 Анимация")
+    await pick_anims(adm, {"Без анимации", "Ходьба", "Танец"})
+    marks = json.dumps(adm.last()["reply_markup"], ensure_ascii=False)
+    check("✅ 1. Без анимации" in marks and "✅ 3. Ходьба" in marks and "✅ 17. Танец" in marks,
+          "three variants ticked, step stays open")
+    await adm.click("К итогу")
+    hub = adm.last()
+    check("2 скина × 3 = 6 эмодзи" in hub["caption"] and "Создать 6 эмодзи" in json.dumps(hub["reply_markup"], ensure_ascii=False),
+          "hub counts skins × variants")
+    check("animation" in hub, "hub preview shows every variant (animated sheet)")
+    await adm.click("Создать")
+    mpack = next(p for p in await db.user_packs(ADMIN_ID) if p.title == "Мульти")
+    mset = fake.sets[mpack.name]
+    rows = await db.pack_emojis(mpack.id)
+    check([e.label for e in rows] == ["Notch · Без анимации", "Notch · Ходьба", "Notch · Танец",
+                                      "jeb_ · Без анимации", "jeb_ · Ходьба", "jeb_ · Танец"], "items grouped by skin")
+    check([st["fmt"] for st in mset["stickers"]] == ["static", "video", "video"] * 2, "static + two animations each")
+    check([e.settings["anim"] for e in rows] == ["none", "walk", "dance"] * 2
+          and all(e.settings["anims"] == [e.settings["anim"]] for e in rows), "each item stores its own variant")
+    check(all(e.settings["mode"] == "hd" for e in rows), "smooth rendering is the default")
+
     print("== sticker pack (admin: no limits)")
     await adm.text("/new")
     await adm.click("🖼 Стикер-пак")
@@ -525,6 +571,10 @@ async def main():
     await adm.click("Далее: настройка")
     await adm.click("2. Minecraft Live")
     await adm.click("1. Авто")
+    check("3 на скин" in adm.last()["caption"], "last used variants are remembered")
+    await adm.click("🎬 Анимация")
+    await pick_anims(adm, {"Без анимации"})
+    await adm.click("К итогу")
     hub = adm.last()
     check("Создать 2 стикера" in json.dumps(hub["reply_markup"], ensure_ascii=False), "button counts stickers")
     from PIL import Image
@@ -542,7 +592,8 @@ async def main():
     await adm.click("1. Классика")
     await adm.click("1. Авто")
     await adm.click("🎬 Анимация")
-    await adm.click("17. Танец")
+    await pick_anims(adm, {"Танец"})
+    await adm.click("К итогу")
     await adm.click("Создать")
     sset = fake.sets[spack.name]
     check(sset["stickers"][-1]["fmt"] == "video" and fake.checked[-1][:3] == ("regular", "video", 512),

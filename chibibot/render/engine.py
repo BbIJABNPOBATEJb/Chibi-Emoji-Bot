@@ -123,7 +123,7 @@ def part_textures(skin: Skin, part: Part, hidden: set[str]) -> dict[str, np.ndar
             out[k] = _alpha_over(over[k], base[k])
         else:
             out[k] = (base or over)[k]
-        if not (out[k][..., 3] >= 128).any():
+        if not (out[k][..., 3] > 0).any():
             out[k] = None
     if all(v is None for v in out.values()):
         return None
@@ -302,6 +302,7 @@ class Canvas:
         self.color = np.zeros((h, w, 3), np.float32)
         self.depth = np.full((h, w), np.inf, np.float32)
         self.ids = np.full((h, w), -1, np.int8)
+        self.alpha = np.zeros((h, w), np.float32)
 
     def draw(self, q: Quad, cam: Camera, g: float, ox: float, oy: float) -> None:
         a, b = cam.a, cam.b
@@ -334,15 +335,36 @@ class Canvas:
         si = np.clip((s * tw).astype(np.int32), 0, tw - 1)
         ti = np.clip((t * th).astype(np.int32), 0, th - 1)
         texel = q.tex[ti, si]
-        inside &= texel[..., 3] >= 128
+        ta = texel[..., 3]
+        inside &= ta > 0
         z = (o[2] + s * u[2] + t * v[2]).astype(np.float32)
         dsub = self.depth[y0:y1, x0:x1]
-        win = inside & (z < dsub)
-        if not win.any():
+        front = inside & (z < dsub)
+        if not front.any():
             return
-        dsub[win] = z[win]
-        self.color[y0:y1, x0:x1][win] = texel[win][:, :3].astype(np.float32) * (q.shade / 255.0)
-        self.ids[y0:y1, x0:x1][win] = q.group
+        csub = self.color[y0:y1, x0:x1]
+        asub = self.alpha[y0:y1, x0:x1]
+        isub = self.ids[y0:y1, x0:x1]
+        rgb = texel[..., :3].astype(np.float32) * (q.shade / 255.0)
+        solid = front & (ta == 255)
+        if solid.any():
+            dsub[solid] = z[solid]
+            csub[solid] = rgb[solid]
+            asub[solid] = 1.0
+            isub[solid] = q.group
+        # Semi-transparent texels (tinted glasses, glass visors on the hat layer) are blended
+        # over whatever is already drawn behind them, the way the game draws the second layer.
+        part = front & (ta < 255)
+        if part.any():
+            a = ta[part].astype(np.float32) / 255.0
+            a0 = asub[part]
+            out_a = a + a0 * (1.0 - a)
+            csub[part] = ((rgb[part] * a[:, None] + csub[part] * (a0 * (1.0 - a))[:, None])
+                          / np.maximum(out_a, 1e-6)[:, None])
+            asub[part] = out_a
+            mostly = part & (ta >= 128)
+            dsub[mostly] = z[mostly]
+            isub[mostly & (isub < 0)] = q.group
 
 
 def _neighbor(a: np.ndarray, dx: int, dy: int, fill) -> np.ndarray:
@@ -385,7 +407,7 @@ def _behind_loop(ids, dep, own, pr, mask, dist, dirs) -> None:
 
 def _post(cv: Canvas, style: Style, outline: str, width: int, tint: float) -> np.ndarray:
     rgb = cv.color
-    alpha = (cv.ids >= 0)
+    alpha = cv.alpha  # 0..1: semi-transparent layer pixels over empty space stay see-through
     if style.ao > 0 and outline != "parts":
         under = _behind_mask(cv, 1, dirs=((0, -1),))
         beside = _behind_mask(cv, 1, dirs=((1, 0), (-1, 0))) & ~under
@@ -397,7 +419,8 @@ def _post(cv: Canvas, style: Style, outline: str, width: int, tint: float) -> np
     if outline in ("parts", "figure"):
         # silhouette ring: each new pixel takes a darkened copy of the figure pixel it
         # grows from ("colour from the art"); later rings copy the ink as is
-        mask = alpha.copy()
+        mask = alpha > 0
+        ring = np.zeros_like(mask)
         for step in range(width):
             grow = np.zeros_like(mask)
             src = np.zeros_like(rgb)
@@ -407,13 +430,14 @@ def _post(cv: Canvas, style: Style, outline: str, width: int, tint: float) -> np
                 grow |= new
             rgb[grow] = src[grow] * (style.ink if step == 0 else 1.0)
             mask |= grow
-        alpha = mask
+            ring |= grow
+        alpha = np.where(ring, 1.0, alpha)
     if tint > 0:
         rgb[..., 1] *= (1 - 0.7 * tint)
         rgb[..., 2] *= (1 - 0.7 * tint)
     out = np.zeros((cv.h, cv.w, 4), np.uint8)
     out[..., :3] = np.clip(rgb * 255 + 0.5, 0, 255).astype(np.uint8)
-    out[..., 3] = alpha.astype(np.uint8) * 255
+    out[..., 3] = np.clip(alpha * 255 + 0.5, 0, 255).astype(np.uint8)
     return out
 
 

@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from . import encode
 from .engine import FPS, RenderError, render
 from .options import ANIMATIONS, BODIES, BUSTS, CAMERAS, POSES, STYLES, Opt, RenderSettings
+from .options import opt as _opt
 from .skin import Skin
 
 BG = (236, 239, 244)
@@ -104,7 +105,8 @@ class Sheet:
         self.w = cols * self.cell + (cols + 1) * self.gap
         self.h = self.title_h + rows * (self.cell + self.label_h) + (rows + 1) * self.gap
 
-    def base(self, labels: list[str], selected: int | None) -> Image.Image:
+    def base(self, labels: list[str], selected: int | set[int] | None) -> Image.Image:
+        picked = selected if isinstance(selected, set) else ({selected} if selected is not None else set())
         im = Image.new("RGB", (self.w, self.h), BG)
         d = ImageDraw.Draw(im)
         if self.title:
@@ -112,16 +114,16 @@ class Sheet:
         f = font(max(11, int(self.label_h * 0.62)))
         for i, lab in enumerate(labels):
             x, y = self.pos(i)
-            if selected == i:
+            if i in picked:
                 d.rectangle([x - 3, y - 3, x + self.cell + 2, y + self.cell + self.label_h + 2], fill=ACCENT)
             d.rectangle([x, y + self.cell, x + self.cell - 1, y + self.cell + self.label_h - 1],
-                        fill=ACCENT if selected == i else (255, 255, 255))
+                        fill=ACCENT if i in picked else (255, 255, 255))
             text = f"{i + 1}. {lab}"
             if d.textlength(text, font=f) > self.cell - 8:
                 while len(text) > 3 and d.textlength(text + "..", font=f) > self.cell - 8:
                     text = text[:-1]
                 text += ".."
-            d.text((x + 4, y + self.cell + 2), text, fill=(255, 255, 255) if selected == i else TEXT, font=f)
+            d.text((x + 4, y + self.cell + 2), text, fill=(255, 255, 255) if i in picked else TEXT, font=f)
         return im
 
     def pos(self, i: int) -> tuple[int, int]:
@@ -156,7 +158,7 @@ def _png(img: Image.Image | np.ndarray) -> bytes:
 
 
 def static_sheet(skin: Skin, variants: list[tuple[str, RenderSettings]], cols: int, scale: int,
-                 selected: int | None, title: str | None = None) -> bytes:
+                 selected: int | set[int] | None, title: str | None = None) -> bytes:
     sh = Sheet(cols, scale, len(variants), title)
     im = np.array(sh.base([v[0] for v in variants], selected))
     for i, (_, s) in enumerate(variants):
@@ -169,7 +171,8 @@ def static_sheet(skin: Skin, variants: list[tuple[str, RenderSettings]], cols: i
 
 
 def animated_sheet(skin: Skin, variants: list[tuple[str, RenderSettings]], cols: int, scale: int,
-                   selected: int | None, title: str | None = None, seconds: float = 3.0) -> tuple[bytes, str]:
+                   selected: int | set[int] | None, title: str | None = None,
+                   seconds: float = 3.0) -> tuple[bytes, str]:
     sh = Sheet(cols, scale, len(variants), title)
     base = np.array(sh.base([v[0] for v in variants], selected))
     # Tiles are kept at native 100x100 and blown up only when a frame is assembled, and the
@@ -196,6 +199,10 @@ def animated_sheet(skin: Skin, variants: list[tuple[str, RenderSettings]], cols:
 
 
 # ------------------------------------------------------------------ per-step examples
+
+def opt_anim(key: str) -> Opt:
+    return _opt("anim", key)
+
 
 def _index(opts: list[Opt], key: str) -> int | None:
     for i, o in enumerate(opts):
@@ -235,13 +242,24 @@ def step_example(skin: Skin, s: RenderSettings, step: str, size: int = 100) -> t
         return "photo", static_sheet(skin, variants, 5, 2, _index(CAMERAS, s.cam)), "cam.png"
     if step == "anim":
         variants = [(label_of(o), s.copy(anim=o.key, mode="pixel")) for o in ANIMATIONS]
-        data, name = animated_sheet(skin, variants, 5, 2, _index(ANIMATIONS, s.anim))
+        picked = {i for i, o in enumerate(ANIMATIONS) if o.key in s.anims}
+        data, name = animated_sheet(skin, variants, 5, 2, picked)
         return "animation", data, name
     return result_preview(skin, s, size)
 
 
 def result_preview(skin: Skin, s: RenderSettings, size: int = 100) -> tuple[str, bytes, str]:
-    """The emoji/sticker exactly as it will be uploaded; tiny emoji are blown up for the chat."""
+    """The emoji/sticker exactly as it will be uploaded; tiny emoji are blown up for the chat.
+
+    With several variants picked (e.g. static + walk + dance) it shows all of them side by side.
+    """
+    if len(s.anims) > 1:
+        variants = [(label_of(opt_anim(a)), s.variant(a)) for a in s.anims]
+        cols = min(4, len(variants))
+        if s.any_animated:
+            data, name = animated_sheet(skin, variants, cols, 2, None)
+            return "animation", data, name
+        return "photo", static_sheet(skin, variants, cols, 2, None), "variants.png"
     res = render(skin, s, size)
     scale = max(1, 400 // size)
     side = size * scale

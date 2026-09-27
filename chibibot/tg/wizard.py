@@ -61,12 +61,14 @@ STEP_TEXT = {
              "• <b>Стив</b> — руки 4 px, <b>Алекс</b> — тонкие руки 3 px.\n"
              "• <b>Авто</b> — определю по скину сам (для каждого скина отдельно)."),
     "pose": ("🤸 <b>Поза</b>\n"
-             "Поза сохраняется при любом ракурсе камеры. Выбор позы выключает анимацию."),
+             "Поза сохраняется при любом ракурсе камеры и относится к статичному варианту "
+             "(«Без анимации» на шаге анимаций)."),
     "bust": ("🖼 <b>Кадр</b>\n"
              "Во весь рост, по пояс (руки и жест остаются в кадре), портрет (голова и плечи) или только голова."),
-    "anim": ("🎬 <b>Анимация</b>\n"
-             "«Без анимации» — статичная картинка. С анимацией — видео до 3 секунд.\n"
-             "«Крадётся», «Ползёт», «Галоп» и «Бросок» ставят фигурку на четвереньки, остальные — в стойку."),
+    "anim": ("🎬 <b>Анимации</b>\n"
+             "Отметьте <b>одну или несколько</b> — каждый скин станет отдельной картинкой на каждый вариант. "
+             "«Без анимации» — статичная картинка с выбранной позой, остальные — видео до 3 секунд.\n"
+             "«Крадётся», «Ползёт», «Галоп» и «Бросок» ставят фигурку на четвереньки."),
     "cam": "📷 <b>Камера</b>\nДесять ракурсов: 3/4, анфас, профили, со спины, сверху и снизу.",
     "parts": ("👁 <b>Части тела</b>\n"
               "Нажмите, чтобы скрыть или показать часть. Второй слой скина (шляпа, куртка, рукава, штанины) "
@@ -102,10 +104,17 @@ def summary(s: RenderSettings, first_slim: bool | None) -> str:
     if s.body == "auto" and first_slim is not None:
         body += f" ({'Алекс' if first_slim else 'Стив'} у первого скина)"
     lines = [f"🎨 Стиль: <b>{opt('style', s.style).ru}</b>", f"🧍 Тело: <b>{body}</b>"]
-    if s.animated:
-        lines.append(f"🎬 Анимация: <b>{opt('anim', s.anim).ru}</b> ({opt('speed', s.speed).ru})")
+    if len(s.anims) > 1:
+        names = ", ".join(opt("anim", a).ru for a in s.anims)
+        lines.append(f"🎬 Варианты ({len(s.anims)} на скин): <b>{names}</b>")
+        if "none" in s.anims:
+            lines.append(f"🤸 Поза статичного: <b>{opt('pose', s.pose).ru}</b>")
+    elif s.animated:
+        lines.append(f"🎬 Анимация: <b>{opt('anim', s.anim).ru}</b>")
     else:
         lines.append(f"🤸 Поза: <b>{opt('pose', s.pose).ru}</b> · статичный")
+    if s.any_animated:
+        lines[-1] += f" · скорость {opt('speed', s.speed).ru}"
     lines += [
         f"🖼 Кадр: <b>{opt('bust', s.bust).ru}</b>",
         f"📷 Камера: <b>{opt('cam', s.cam).ru}</b>",
@@ -123,7 +132,12 @@ async def _pack(app: App, data: dict) -> Pack | None:
 def _make_label(data: dict) -> str:
     if data.get("replace"):
         return "✅ Заменить"
-    return f"✅ Создать {kind_of(data.get('kind')).count(len(_items(data)))}"
+    return f"✅ Создать {kind_of(data.get('kind')).count(_total(data))}"
+
+
+def _total(data: dict) -> int:
+    """How many emojis/stickers "Create" will make: every skin times every picked variant."""
+    return len(_items(data)) * len(_settings(data).anims)
 
 
 @dataclass
@@ -408,7 +422,7 @@ def _media_key(step: str, first: dict, s: RenderSettings, size: int) -> str:
     return f"{step}|{size}|{first['sha1']}|{first.get('slim')}|{json.dumps(d, sort_keys=True)}"
 
 
-def board_caption(step: str, s: RenderSettings, data: dict, pack: Pack | None) -> str:
+def board_caption(step: str, s: RenderSettings, data: dict, pack: Pack | None, capacity: int | None = None) -> str:
     items = _items(data)
     first = items[0]
     head = f"{kind_of(data.get('kind')).icon} «{esc(pack.title if pack else '?')}»"
@@ -418,6 +432,12 @@ def board_caption(step: str, s: RenderSettings, data: dict, pack: Pack | None) -
         head += f" · в очереди {skin_word(len(items))}"
     if step == "hub":
         body = "✨ <b>Итог</b>\n" + summary(s, first.get("slim"))
+        if not data.get("replace") and len(s.anims) > 1:
+            body += (f"\n\n📦 Всего получится: <b>{skin_word(len(items))} × {len(s.anims)} = "
+                     f"{kind_of(data.get('kind')).count(_total(data))}</b>")
+        if capacity is not None and capacity < _total(data):
+            body += (f"\n⚠️ Сейчас влезет только {capacity} — остальное упрётся в лимит пака "
+                     "или дневную квоту.")
         body += "\n\nМожно создавать или донастроить позу, кадр, анимацию, камеру и части тела."
     else:
         body = STEP_TEXT[step]
@@ -446,10 +466,12 @@ def board_kb(step: str, s: RenderSettings, data: dict):
     rows: list[list] = []
     if step in OPTION_STEPS:
         current = getattr(s, step)
+        multi = step == "anim" and not data.get("replace")
         opts = OPTION_STEPS[step]
         buttons = []
         for i, o in enumerate(opts):
-            mark = "✅ " if o.key == current else ""
+            chosen = o.key in s.anims if multi else o.key == current
+            mark = "✅ " if chosen else ("▫️ " if multi else "")
             buttons.append(btn(f"{mark}{i + 1}. {o.ru}", Wiz(act="set", val=f"{step}|{o.key}")))
         if step == "anim":
             rows.append([buttons[0]])
@@ -467,7 +489,7 @@ def board_kb(step: str, s: RenderSettings, data: dict):
                      for o in RENDER_MODES])
         outl = [btn(("✅ " if s.outline == o.key else "") + o.ru, Wiz(act="set", val=f"outline|{o.key}")) for o in OUTLINES]
         rows += chunks(outl, 2)
-        if s.animated:
+        if s.any_animated:
             rows.append([btn(("✅ " if s.speed == o.key else "") + o.ru, Wiz(act="set", val=f"speed|{o.key}"))
                          for o in SPEEDS])
         em = [btn(("✅" if s.emoji == e else "") + e, Wiz(act="set", val=f"emoji|{e}")) for e in QUICK_EMOJI]
@@ -495,7 +517,13 @@ async def render_board(bot: Bot, app: App, state: FSMContext, chat_id: int) -> N
     s = _settings(data)
     first = _items(data)[0]
     pack = await _pack(app, data)
-    caption = board_caption(step, s, data, pack)
+    capacity = None
+    if step == "hub" and pack and not data.get("replace"):
+        q = await app.quota(data.get("uid", 0), data.get("admin", False))
+        capacity = max(0, pack.k.max_items - pack.count)
+        if q.left is not None:
+            capacity = min(capacity, q.left)
+    caption = board_caption(step, s, data, pack, capacity)
     markup = board_kb(step, s, data)
     media_step = step if step in OPTION_STEPS else "result"
     size = kind_of(data.get("kind")).size
@@ -506,13 +534,15 @@ async def render_board(bot: Bot, app: App, state: FSMContext, chat_id: int) -> N
         kind, payload = cached
         name = ""
     else:
-        slow = media_step == "anim" or s.animated
+        slow = media_step == "anim" or s.any_animated
         if slow and old:
             await set_caption(bot, chat_id, old, "⏳ Рисую примеры…")
         try:
             skin = app.store.load_bytes(first["sha1"])
             if media_step == "result":
-                kind, payload, name = await app.worker.run(job_result, skin, first.get("slim"), s.to_dict(), size)
+                heavy = len(s.anims) > 1 and s.any_animated  # a sheet of every picked variant
+                kind, payload, name = await app.worker.run(job_result, skin, first.get("slim"), s.to_dict(), size,
+                                                           heavy=heavy)
             else:
                 heavy = media_step == "anim" or (media_step == "cam" and s.animated)
                 kind, payload, name = await app.worker.run(job_step, skin, first.get("slim"), s.to_dict(),
@@ -597,18 +627,34 @@ async def cb_set(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot: 
         return
     group, _, key = callback_data.val.partition("|")
     s = _settings(data)
+    multi = group == "anim" and not data.get("replace")
     if group == "emoji":
         s.emoji = key
+    elif multi:
+        # tick/untick one variant; at least one always stays picked
+        picked = set(s.anims) ^ {key}
+        if not picked:
+            await cq.answer("Хотя бы один вариант должен остаться.", show_alert=True)
+            return
+        s.anims = [o.key for o in ANIMATIONS if o.key in picked]
+        s.anim = key if key in picked else s.anims[0]
     elif group in ("style", "body", "pose", "bust", "anim", "cam", "mode", "outline", "speed"):
         setattr(s, group, key)
+        if group == "anim":  # redrawing one item: a single variant
+            s.anims = [key]
         if group == "pose":
-            s.anim = "none"
+            # a pose is what the static variant shows, so make sure there is one
+            if data.get("replace"):
+                s.anim, s.anims = "none", ["none"]
+            elif "none" not in s.anims:
+                s.anims = ["none"] + s.anims
+                s.anim = "none"
     else:
         await cq.answer()
         return
     await state.update_data(s=RenderSettings.from_dict(s.to_dict()).to_dict())
     step = data.get("step")
-    if step in OPTION_STEPS:
+    if step in OPTION_STEPS and not multi:
         await _go(cq, state, bot, app, me, _next_step(step, data))
     else:
         await _go(cq, state, bot, app, me, step, push=False)
@@ -803,26 +849,31 @@ async def _do_create(cq: CallbackQuery, bot: Bot, app: App, me: User, admin: boo
             await set_caption(bot, chat_id, board, "⚠️ Не получилось")
             await bot.send_message(chat_id, reason, reply_markup=_done_kb(pack))
             return
+        # every skin × every picked variant, grouped by skin: Notch-idle, Notch-walk, jeb_-idle, …
+        many = len(s.anims) > 1
+        planned = [
+            Item(f"{it['label']} · {opt('anim', a).ru}" if many else it["label"], it["source"], it["sha1"],
+                 it.get("slim"), s.variant(a).to_dict(), s.emoji, keyword=it["label"])
+            for it in items for a in s.anims
+        ]
         q = await app.quota(me.id, admin)
         room = max(0, pack.k.max_items - pack.count)
-        quota_room = len(items) if q.left is None else q.left
-        todo = items[:min(room, quota_room)]
-        skipped = len(items) - min(len(items), room)
-        over_quota = max(0, min(len(items), room) - len(todo))
+        quota_room = len(planned) if q.left is None else q.left
+        todo = planned[:min(room, quota_room)]
+        skipped = len(planned) - min(len(planned), room)
+        over_quota = max(0, min(len(planned), room) - len(todo))
         total = len(todo)
         await set_caption(bot, chat_id, board, f"⏳ Рисую и загружаю в «{esc(pack.title)}»: 0/{total}…")
 
         async def progress(n: int, of: int) -> None:
             await set_caption(bot, chat_id, board, f"⏳ Рисую и загружаю в «{esc(pack.title)}»: {n}/{of}…")
 
-        items_up = [Item(it["label"], it["source"], it["sha1"], it.get("slim"), sd, s.emoji) for it in todo]
-        res = await render_and_upload(app, pack, items_up, me.id, progress)
+        res = await render_and_upload(app, pack, todo, me.id, progress)
         ok, failed = res.ok, res.failed
         if ok:
             await app.db.touch_pack(pack.id, me.id, settings=sd)
-            await app.db.log(me.id, "emoji_add", pack,
-                             details=f"{len(ok)} шт. ({'анимированные' if s.animated else 'статичные'}): "
-                                     + ", ".join(ok)[:900])
+            kinds = ", ".join(opt("anim", a).ru for a in s.anims)
+            await app.db.log(me.id, "emoji_add", pack, details=f"{len(ok)} шт. ({kinds}): " + ", ".join(ok)[:900])
         await app.db.save_user_settings(me.id, sd)
     pack = await app.db.get_pack(pack.id) or pack
     lines = []
@@ -837,10 +888,10 @@ async def _do_create(cq: CallbackQuery, bot: Bot, app: App, me: User, admin: boo
     else:
         lines.append("😔 Не удалось ничего добавить.")
     if skipped:
-        lines.append(f"⚠️ {skin_word(skipped)} не влезли: в паке максимум {pack.k.count(pack.k.max_items)}.")
+        lines.append(f"⚠️ Ещё {pack.k.count(skipped)} не влезли: в паке максимум {pack.k.count(pack.k.max_items)}.")
     if over_quota:
         q = await app.quota(me.id, admin)
-        lines.append(f"⏳ {skin_word(over_quota)} не добавлены: дневной лимит {q.daily_limit} за 24 часа. "
+        lines.append(f"⏳ Ещё {pack.k.count(over_quota)} не добавлены: дневной лимит {q.daily_limit} за 24 часа. "
                      f"Снова можно будет {app.when(q.next_free)}.")
     elif not admin:
         q = await app.quota(me.id, admin)

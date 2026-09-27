@@ -198,6 +198,22 @@ class Database:
             if col not in have:
                 await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
         await self.conn.commit()
+        await self._migrate_default_smooth()
+
+    async def _migrate_default_smooth(self) -> None:
+        """Once: the default render mode became "hd". Saved "last used" settings of users and
+        packs still carried the old default, so flip them too (items already made keep theirs)."""
+        if await self.kv_get("migr_default_hd"):
+            return
+        for table in ("users", "packs"):
+            async with self.c.execute(f"SELECT id, settings FROM {table} WHERE settings IS NOT NULL") as cur:
+                rows = await cur.fetchall()
+            for r in rows:
+                d = _uj(r["settings"])
+                if isinstance(d, dict) and d.get("mode") == "pixel":
+                    d["mode"] = "hd"
+                    await self.c.execute(f"UPDATE {table} SET settings=? WHERE id=?", (_j(d), r["id"]))
+        await self.kv_set("migr_default_hd", "1")
 
     async def close(self) -> None:
         if self.conn:

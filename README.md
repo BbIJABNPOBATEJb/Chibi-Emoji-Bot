@@ -21,7 +21,10 @@ themselves in Telegram.
 - 🧍 **Body type**: Auto / Steve / Alex (Auto uses Mojang's profile data or the skin's pixels).
 - 🤸 **10 poses**, 🖼 **4 framings** (full body, half body, portrait, head), 🎬 **25 animations**,
   📷 **10 camera angles**, 👁 **12 part toggles** (base and second layer separately),
-  render mode (pixel art / smooth), outline, animation speed, and the emoji the item is linked to.
+  render mode (smooth by default, or crisp pixel art), outline, animation speed, and the emoji the item is linked to.
+- 🎞 **Several animations at once**: tick any number of variants (static pose included) and every skin becomes
+  one emoji/sticker per variant — e.g. 3 skins × «static + walk + dance» = 9 items in one go.
+- 🕶 Second-layer pixels with partial transparency (tinted glasses, visors) are blended like in the game.
 - 🖼 Every step shows a preview sheet drawn with **your own** skin (an animated grid for animations).
 - ⚡ After picking the style and body type you can hit «✅ Создать» (Create) right away or keep tuning.
 - 🗂 **Pack management**: overview sheet, item list, redraw an item with new settings (in place),

@@ -155,17 +155,28 @@ class RenderSettings:
     body: str = "auto"
     pose: str = "stand"
     bust: str = "full"
-    anim: str = "none"
+    anim: str = "none"                               # the variant being drawn
     cam: str = "34r"
     hidden: list[str] = field(default_factory=list)  # part keys that are switched off
-    mode: str = "pixel"
+    mode: str = "hd"
     outline: str = "auto"
     speed: str = "1"
     emoji: str = "🙂"
+    # Every variant picked in the wizard: each skin becomes one emoji/sticker per entry
+    # ("none" = the static pose). Stored per item it is always just [anim].
+    anims: list[str] = field(default_factory=lambda: ["none"])
 
     @property
     def animated(self) -> bool:
         return self.anim != "none"
+
+    @property
+    def any_animated(self) -> bool:
+        return any(a != "none" for a in self.anims)
+
+    def variant(self, anim: str) -> "RenderSettings":
+        """Settings for one concrete item."""
+        return self.copy(anim=anim, anims=[anim])
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -180,10 +191,14 @@ class RenderSettings:
             if k in names:
                 setattr(s, k, v)
         # sanitise anything stale or tampered with
+        defaults = cls()
         for g in ("style", "body", "pose", "bust", "anim", "cam", "mode", "outline", "speed"):
             if getattr(s, g) not in {o.key for o in GROUPS[g]}:
-                setattr(s, g, GROUPS[g][0].key if g != "speed" else "1")
+                setattr(s, g, getattr(defaults, g))
         s.hidden = [p for p in (s.hidden or []) if p in PART_KEYS]
+        # settings saved before multi-select had no "anims": they meant just their one anim
+        chosen = set(d.get("anims") or []) if isinstance(d.get("anims"), list) else set()
+        s.anims = [o.key for o in ANIMATIONS if o.key in chosen] or [s.anim]
         if not isinstance(s.emoji, str) or not s.emoji or len(s.emoji) > 16:
             s.emoji = "🙂"
         return s

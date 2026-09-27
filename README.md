@@ -1,67 +1,71 @@
 # 🧸 Chibi Emoji Bot
 
-🎨 **Chibi Emoji Bot** — Telegram-бот, который превращает скины Minecraft в чиби **эмодзи-паки** и **стикер-паки** —
-статичные и анимированные. Аналог [Minecraft Chibi Skin Maker](https://nogard.dev/tools/minecraft-chibi-skin-maker),
-но прямо в чате: свой рендер, настройки с картинками-примерами, паки собираются и публикуются в Telegram сами.
+🎨 **Chibi Emoji Bot** is a Telegram bot that turns Minecraft skins into chibi **custom emoji packs** and
+**sticker packs** — static or animated. Think [Minecraft Chibi Skin Maker](https://nogard.dev/tools/minecraft-chibi-skin-maker),
+but right inside a chat: its own renderer, settings with preview images, and packs that build and publish
+themselves in Telegram.
+
+> The bot's interface is in Russian; button names below are quoted as they appear, with a translation.
 
 <p align="center">
-  <img src="docs/styles.png" alt="Стили: Классика и Minecraft Live" width="46%">
-  <img src="docs/cameras.png" alt="Ракурсы камеры" width="52%">
+  <img src="docs/styles.png" alt="Styles: Classic and Minecraft Live" width="46%">
+  <img src="docs/cameras.png" alt="Camera angles" width="52%">
 </p>
 
-## 📋 Возможности
+## 📋 Features
 
-- 📥 **Скины откуда угодно**: ники Minecraft Java (через запятую, `;` или с новой строки), UUID, PNG-файлы
-  (64×64, 64×32, HD 128×128 и больше), ZIP/TAR-архивы (PNG + `.txt` со списком ников).
-  Скины можно прислать в любой момент — бот спросит, в какой пак их добавить.
-- 🎨 **Два стиля**: Классика (пиксель-арт чиби) и Minecraft Live (огромная голова, обводка каждой части).
-- 🧍 **Тип тела**: Авто / Стив / Алекс (авто — по данным Mojang или по пикселям скина).
-- 🤸 **10 поз**, 🖼 **4 варианта кадра** (весь рост, по пояс, портрет, голова), 🎬 **25 анимаций**,
-  📷 **10 ракурсов камеры**, 👁 **видимость 12 частей** (основа и второй слой отдельно),
-  режим отрисовки (пиксель-арт / сглаженный), обводка, скорость анимации, эмодзи-привязка.
-- 🖼 На каждом шаге — картинка-пример с **вашим** скином (для анимаций — анимированная сетка).
-- ⚡ После стиля и типа тела можно сразу нажать «✅ Создать» или продолжить настройку.
-- 🗂 **Управление паком**: обзор-сетка, список, перерисовка с новыми настройками (на том же месте),
-  «сделать первым» (иконка пака), удаление, переименование, история изменений.
-- 🔁 **Конвертация** эмодзи-пака в стикер-пак и обратно.
-- 👑 **Роли**: игрок работает только со своими паками в пределах лимитов; админ — без ограничений, видит все паки,
-  кто и когда их создал и изменил, общий журнал действий, пользователей и их расход.
+- 📥 **Skins from anywhere**: Minecraft Java nicknames (separated by commas, `;` or new lines), UUIDs,
+  PNG files (64×64, legacy 64×32, HD 128×128 and up), ZIP/TAR archives (PNGs plus a `.txt` list of nicknames).
+  Skins can be sent at any time — the bot asks which pack to add them to.
+- 🎨 **Two styles**: Classic (pixel-art chibi) and Minecraft Live (huge head, every part outlined).
+- 🧍 **Body type**: Auto / Steve / Alex (Auto uses Mojang's profile data or the skin's pixels).
+- 🤸 **10 poses**, 🖼 **4 framings** (full body, half body, portrait, head), 🎬 **25 animations**,
+  📷 **10 camera angles**, 👁 **12 part toggles** (base and second layer separately),
+  render mode (pixel art / smooth), outline, animation speed, and the emoji the item is linked to.
+- 🖼 Every step shows a preview sheet drawn with **your own** skin (an animated grid for animations).
+- ⚡ After picking the style and body type you can hit «✅ Создать» (Create) right away or keep tuning.
+- 🗂 **Pack management**: overview sheet, item list, redraw an item with new settings (in place),
+  "make first" (pack icon), delete, rename, change history.
+- 🔁 **Conversion** of an emoji pack into a sticker pack and back.
+- 👑 **Roles**: players manage only their own packs within limits; admins have no limits and see every pack,
+  who created and changed it and when, a global audit log, users and their usage.
 
-<p align="center"><img src="docs/poses.png" alt="10 поз" width="90%"></p>
+<p align="center"><img src="docs/poses.png" alt="10 poses" width="90%"></p>
 
-## 😀 Эмодзи-паки и 🖼 стикер-паки
+## 😀 Emoji packs and 🖼 sticker packs
 
-| | 😀 Эмодзи-пак | 🖼 Стикер-пак |
+| | 😀 Emoji pack | 🖼 Sticker pack |
 |---|---|---|
-| Что это | custom emoji прямо в тексте | обычные стикеры |
-| Размер картинки | 100×100 | 512×512 |
-| Максимум в паке | 200 | 120 |
-| Ссылка | `t.me/addemoji/…` | `t.me/addstickers/…` |
-| Нужен Telegram Premium | чтобы отправлять — да | нет |
+| What it is | custom emoji inside message text | regular stickers |
+| Image size | 100×100 | 512×512 |
+| Max items per pack | 200 | 120 |
+| Link | `t.me/addemoji/…` | `t.me/addstickers/…` |
+| Telegram Premium required | yes, to send them | no |
 
-Вид выбирается при создании пака, всё остальное у них общее. Без анимации получается PNG,
-с анимацией — WEBM (VP9 с прозрачностью, до 3 секунд); в одном паке их можно смешивать.
+The kind is chosen when a pack is created; everything else is shared. Static items are PNG,
+animated ones are WEBM (VP9 with transparency, up to 3 seconds); both can be mixed in one pack.
 
-**Конвертация.** Кнопка «🔁 Сделать стикер-пак из этого» (или «эмодзи-пак» — в обратную сторону) создаёт
-новый пак другого вида и перерисовывает в нём все картинки в нужном размере, каждую — со своим скином
-и настройками, в том же порядке. Исходный пак остаётся: Telegram не умеет менять вид существующего набора.
+**Conversion.** The «🔁 Сделать стикер-пак из этого» button ("Make a sticker pack from this" — or "emoji pack"
+for the reverse) creates a new pack of the other kind and redraws every item at the right size, each with its
+own skin and settings, in the same order. The source pack stays as it is: Telegram cannot change the kind of
+an existing set.
 
-## 🚦 Лимиты игрока
+## 🚦 Player limits
 
-| Лимит | По умолчанию | Как считается |
+| Limit | Default | How it counts |
 |---|---|---|
-| Непустых паков | 5 | эмодзи- и стикер-паки вместе; пак начинает считаться с первой картинки |
-| Пустых паков одновременно | 3 | защита от бесконечных черновиков |
-| Эмодзи и стикеров за 24 часа | 150 | скользящее окно; создание, перерисовка и конвертация считаются, удаление квоту не возвращает |
-| Скинов за один раз | 50 | размер одной очереди |
+| Non-empty packs | 5 | emoji and sticker packs together; a pack starts counting with its first item |
+| Empty packs at once | 3 | guards against endless drafts |
+| Emoji and stickers per 24 hours | 150 | rolling window; creating, redrawing and converting count, deleting gives nothing back |
+| Skins per batch | 50 | size of one queue |
 
-Остаток видно в меню («осталось 120 из 150»); когда квота кончилась, бот пишет, во сколько освободится
-следующее место. Квота тратится у того, кто рисует: если админ добавляет эмодзи в пак игрока,
-у игрока она не уменьшается. Личные лимиты задаёт админ командой `/setlimit`.
+The remaining quota is shown in the menu ("120 of 150 left"); once it runs out, the bot says when the next
+slot frees up. The quota is charged to whoever draws: when an admin adds items to a player's pack, the player's
+quota does not change. Admins set personal limits with `/setlimit`.
 
-## 🚀 Быстрый старт
+## 🚀 Quick start
 
-Нужен Python 3.10+ и токен бота от [@BotFather](https://t.me/BotFather).
+Requires Python 3.10+ and a bot token from [@BotFather](https://t.me/BotFather).
 
 ```bash
 git clone https://github.com/BbIJABNPOBATEJb/Chibi-Emoji-Bot.git
@@ -71,51 +75,52 @@ git clone https://github.com/BbIJABNPOBATEJb/Chibi-Emoji-Bot.git
 cd Chibi-Emoji-Bot && pip install -r requirements.txt
 ```
 
-Скопируйте `.env.example` в `.env`, впишите `BOT_TOKEN` и запустите:
+Copy `.env.example` to `.env`, fill in `BOT_TOKEN` and run:
 
 ```bash
 python bot.py
 ```
 
-На Windows можно просто запустить `run.bat`.
+On Windows you can simply run `run.bat`.
 
-**ffmpeg** нужен для анимаций. Бот ищет его в `FFMPEG_PATH`, затем в `PATH`, затем берёт из пакета
-`imageio-ffmpeg`, который ставится из `requirements.txt` — отдельно устанавливать обычно ничего не нужно.
+**ffmpeg** is needed for animations. The bot looks for it in `FFMPEG_PATH`, then in `PATH`, then falls back to
+the `imageio-ffmpeg` package installed from `requirements.txt` — usually nothing else has to be installed.
 
-## 👑 Администраторы
+## 👑 Admins
 
-Узнайте свой ID командой `/id` и впишите его в `ADMIN_IDS` в `.env`, затем перезапустите бота.
-Либо, пока админов нет совсем, при запуске в логе печатается одноразовая команда `/claim <код>` — отправьте её боту.
+Get your ID with `/id`, put it into `ADMIN_IDS` in `.env` and restart the bot.
+Alternatively, while there are no admins at all, the bot prints a one-time `/claim <code>` command
+to its log on startup — send it to the bot.
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `/addadmin ID`, `/deladmin ID` | назначить / снять администратора |
-| `/admins` | список администраторов |
-| `/setlimit ID` | лимиты и расход игрока |
-| `/setlimit ID паки эмодзи_в_сутки` | личные лимиты (`0` — без лимита, `-` — как в `.env`) |
-| `/stats` | статистика |
+| `/addadmin ID`, `/deladmin ID` | grant / revoke admin rights |
+| `/admins` | list admins |
+| `/setlimit ID` | a player's limits and usage |
+| `/setlimit ID packs items_per_day` | personal limits (`0` — unlimited, `-` — as in `.env`) |
+| `/stats` | statistics |
 
-## ⚙️ Настройки (`.env`)
+## ⚙️ Settings (`.env`)
 
-| Переменная | По умолчанию | Что делает |
+| Variable | Default | Meaning |
 |---|---|---|
-| `BOT_TOKEN` | — | токен от @BotFather |
-| `ADMIN_IDS` | пусто | ID админов через запятую |
-| `MAX_PACKS_PER_USER` | 5 | непустых паков у игрока, эмодзи и стикеры вместе (0 — без лимита) |
-| `DAILY_EMOJI_LIMIT` | 150 | эмодзи и стикеров за 24 часа у игрока (0 — без лимита) |
-| `MAX_EMPTY_PACKS` | 3 | пустых паков одновременно |
-| `MAX_BATCH_USER` / `MAX_BATCH_ADMIN` | 50 / 200 | сколько скинов за один раз |
-| `TIMEZONE` | Europe/Moscow | часовой пояс в журнале и логах |
-| `DATA_DIR` | data | база SQLite, скины, миниатюры |
-| `RENDER_WORKERS` | auto | процессов рендера: число или `auto` (по ядрам, не больше 4) |
-| `FFMPEG_PATH` | пусто | путь к ffmpeg, если он не в `PATH` |
-| `TITLE_SUFFIX` | auto | что дописывать в конец названия пака: `auto` — `@юзернейм_бота`, `none` — ничего, либо свой текст |
-| `DOCKER_MTU` | 1400 | MTU сети контейнера (только для Docker, см. ниже) |
+| `BOT_TOKEN` | — | token from @BotFather |
+| `ADMIN_IDS` | empty | admin IDs, comma-separated |
+| `MAX_PACKS_PER_USER` | 5 | non-empty packs per player, emoji and stickers together (0 — unlimited) |
+| `DAILY_EMOJI_LIMIT` | 150 | emoji and stickers per player per 24 hours (0 — unlimited) |
+| `MAX_EMPTY_PACKS` | 3 | empty packs at once |
+| `MAX_BATCH_USER` / `MAX_BATCH_ADMIN` | 50 / 200 | skins per batch |
+| `TIMEZONE` | Europe/Moscow | time zone for the audit log and logs |
+| `DATA_DIR` | data | SQLite database, skins, thumbnails |
+| `RENDER_WORKERS` | auto | render processes: a number or `auto` (one per core, at most 4) |
+| `FFMPEG_PATH` | empty | path to ffmpeg if it is not in `PATH` |
+| `TITLE_SUFFIX` | auto | appended to every pack title: `auto` — `@bot_username`, `none` — nothing, or any text |
+| `DOCKER_MTU` | 1400 | container network MTU (Docker only, see below) |
 
-## 🐳 Запуск на сервере через Docker
+## 🐳 Running on a server with Docker
 
-В образе уже есть всё нужное: Python 3.12, ffmpeg (VP9 и H.264) и шрифт с кириллицей. Бот работает
-не от root, а база, скины и миниатюры лежат в `./data` рядом с `docker-compose.yml`.
+The image has everything it needs: Python 3.12, ffmpeg (VP9 and H.264) and a font with Cyrillic.
+The bot runs as a non-root user; the database, skins and thumbnails live in `./data` next to `docker-compose.yml`.
 
 ```bash
 git clone https://github.com/BbIJABNPOBATEJb/Chibi-Emoji-Bot.git /opt/chibi-bot
@@ -129,33 +134,32 @@ cd /opt/chibi-bot && cp .env.example .env && nano .env
 docker compose up -d --build
 ```
 
-Логи (там же код `/claim`, если `ADMIN_IDS` пустой):
+Logs (including the `/claim` code when `ADMIN_IDS` is empty):
 
 ```bash
 docker compose logs -f
 ```
 
-Обновление: `git pull && docker compose up -d --build`. Остановка: `docker compose down` — данные в `./data`
-сохраняются.
+Update: `git pull && docker compose up -d --build`. Stop: `docker compose down` — data in `./data` is kept.
 
-- **Перенос существующих паков.** Остановите старого бота и скопируйте папку `data/` целиком
-  (`bot.sqlite3` вместе с файлами `-wal`/`-shm`, `skins/`, `thumbs/`) в `./data` до первого запуска.
-  Права на папку контейнер выставит сам.
-- **Один токен — один экземпляр.** Два бота с одним токеном мешают друг другу (ошибка `Conflict` в логах).
-- **Ресурсы.** `RENDER_WORKERS=auto` подстраивается под число ядер, память ограничена `mem_limit: 1g`.
-  Чтобы дополнительно ограничить CPU, добавьте в `docker-compose.yml` строку `cpus: 1.5` — значение не может
-  превышать число ядер сервера, иначе Docker не запустит контейнер.
-- **MTU.** Сеть бота создаётся с MTU 1400. У многих VPS/VPN-серверов MTU интерфейса меньше стандартных
-  для Docker 1500 (например, 1448): тогда большие TLS-пакеты теряются и HTTPS-запросы из контейнера
-  (Mojang, скачивание файлов) случайно зависают. Если у вас MTU ещё меньше (`ip link` → `mtu`),
-  поставьте `DOCKER_MTU` на 50 меньше и выполните `docker compose down && docker compose up -d`.
-- **Резервная копия** — архив папки `data/`, лучше при остановленном боте:
+- **Moving existing packs.** Stop the old bot and copy the whole `data/` folder (`bot.sqlite3` together with its
+  `-wal`/`-shm` files, `skins/`, `thumbs/`) into `./data` before the first start. The container fixes the
+  folder's permissions itself.
+- **One token — one instance.** Two bots with the same token get in each other's way (`Conflict` in the logs).
+- **Resources.** `RENDER_WORKERS=auto` adapts to the number of cores, memory is capped with `mem_limit: 1g`.
+  To limit CPU further, add `cpus: 1.5` to `docker-compose.yml` — the value may not exceed the server's core
+  count, otherwise Docker refuses to start the container.
+- **MTU.** The bot's network is created with MTU 1400. Many VPS/VPN hosts have an interface MTU below Docker's
+  default 1500 (e.g. 1448): large TLS packets then get lost and HTTPS requests from the container (Mojang,
+  file downloads) hang at random. If your MTU is even lower (`ip link` → `mtu`), set `DOCKER_MTU` 50 below it
+  and run `docker compose down && docker compose up -d`.
+- **Backups** are just an archive of `data/`, best taken with the bot stopped:
   `docker compose stop && tar czf chibi-backup.tgz data && docker compose start`.
 
-## 🖥 Запуск на сервере без Docker
+## 🖥 Running on a server without Docker
 
-Нужны Python 3.10+, `ffmpeg` с `libvpx` (или `imageio-ffmpeg`) и шрифт с кириллицей для подписей
-на картинках-примерах (`fonts-dejavu-core`). Пример unit для systemd:
+You need Python 3.10+, `ffmpeg` with `libvpx` (or `imageio-ffmpeg`) and a font with Cyrillic for the
+labels on preview sheets (`fonts-dejavu-core`). Example systemd unit:
 
 ```ini
 [Unit]
@@ -171,63 +175,63 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-## 🧱 Как устроено
+## 🧱 Project layout
 
 ```
-bot.py                  точка входа (тонкая: процессы рендера перезапускают этот файл)
+bot.py                  entry point (kept tiny: render processes re-import this file)
 chibibot/
-  main.py               запуск: сервисы, диспетчер aiogram 3, long polling
-  config.py             настройки из .env
-  kinds.py              эмодзи-пак vs стикер-пак: размеры, лимиты, ссылки
-  render/               рендер — свой растеризатор на numpy
-    skin.py             загрузка скинов: HD, legacy 64×32, определение Алекс
-    model.py            модели Classic и Minecraft Live (коробки, UV, пропорции)
-    pose.py             10 поз и 25 анимаций
-    engine.py           камеры, z-буфер, затенение, обводка, подбор масштаба под 100 и 512 px
-    encode.py           PNG, WEBM VP9 с альфой, MP4-превью (кадры идут в ffmpeg потоком)
-    previews.py         сетки-примеры с подписями
-    options.py          все опции и их ключи
-  sources.py            ники → скины (Mojang API + резервное зеркало), PNG, архивы
-  stickers.py           наборы в Telegram: создание, добавление, замена, порядок, синхронизация
-  db.py                 SQLite: пользователи, паки, эмодзи, журнал, квоты
-  jobs.py               пул процессов рендера, переживающий падение процесса
-  tg/                   хендлеры: меню, паки, мастер, конвертация, админка, быстрое добавление
-tests/                  смоук-тест и проверки для сервера
-docs/                   картинки для README
+  main.py               startup: services, aiogram 3 dispatcher, long polling
+  config.py             settings from .env
+  kinds.py              emoji pack vs sticker pack: sizes, limits, links
+  render/               the renderer — a custom numpy rasteriser
+    skin.py             skin loading: HD, legacy 64×32, Alex detection
+    model.py            Classic and Minecraft Live models (boxes, UVs, proportions)
+    pose.py             10 poses and 25 animations
+    engine.py           cameras, z-buffer, shading, outlines, scale fitting for 100 and 512 px
+    encode.py           PNG, VP9 WEBM with alpha, MP4 previews (frames are streamed into ffmpeg)
+    previews.py         labelled preview sheets
+    options.py          every option and its key
+  sources.py            nicknames → skins (Mojang API + fallback mirror), PNGs, archives
+  stickers.py           Telegram sets: create, add, replace, reorder, sync
+  db.py                 SQLite: users, packs, items, audit log, quotas
+  jobs.py               render process pool that survives a crashed process
+  tg/                   handlers: menu, packs, wizard, conversion, admin, quick add
+tests/                  smoke test and server checks
+docs/                   images for this README
 ```
 
-Рендер — не копия сайта, а собственная реализация: фигурка собирается из текстурированных коробок
-и рисуется косоугольной проекцией, поэтому лицевая грань всегда остаётся ровным пиксель-артом
-(2 px на тексель головы в Классике, 3 px в Live), а позы, ракурсы и анимации работают в любых сочетаниях.
+The renderer is not a copy of the website but an independent implementation: the figure is assembled from
+textured boxes and drawn with an oblique projection, so the facing side always stays clean pixel art
+(2 px per head texel in Classic, 3 px in Live), while poses, camera angles and animations work in any combination.
 
-## 🧪 Тесты
+## 🧪 Tests
 
 ```bash
 python tests/smoke_test.py
 ```
 
-Проходит весь путь игрока и админа на фейковом Telegram API — создание паков обоих видов, мастер, загрузку,
-перерисовку, конвертацию, лимиты, админку — и проверяет размеры картинок по правилам Telegram.
-Нужен интернет для запросов к Mojang, в настоящий Telegram ничего не отправляется.
+Walks through the whole player and admin journey on a fake Telegram API — creating packs of both kinds,
+the wizard, uploads, redraws, conversion, limits, admin tools — and checks image sizes against Telegram's rules.
+It needs internet access for Mojang lookups; nothing is sent to the real Telegram.
 
-Проверки, полезные на сервере:
+Checks that are handy on a server:
 
-- `tests/worker_test.py` — пул рендера переживает убитый процесс (например, по нехватке памяти);
-- `tests/memory_check.py` — пиковая память самых тяжёлых задач (только Linux);
-- `tests/fetch_timing.py` — сколько занимает поиск скинов по нику с этой машины.
+- `tests/worker_test.py` — the render pool survives a killed process (e.g. out of memory);
+- `tests/memory_check.py` — peak memory of the heaviest jobs (Linux only);
+- `tests/fetch_timing.py` — how long nickname lookups take from this machine.
 
-В Docker их удобно запускать во временном контейнере рядом с ботом:
+With Docker, run them in a throwaway container next to the bot:
 
 ```bash
 docker run --rm --network chibi-bot_default -v "$PWD/tests:/app/tests:ro" chibi-emoji-bot python tests/worker_test.py
 ```
 
-## ℹ️ Важно знать
+## ℹ️ Good to know
 
-- Пак появляется в Telegram после первой картинки; до этого он «пустой» и не считается в лимите.
-- Custom emoji отправлять могут пользователи **Telegram Premium**; стикеры — все.
-- В эмодзи-паке максимум **200** картинок, в стикер-паке — **120** (ограничения Telegram).
-- Владелец пака — тот, кто его создал; он должен хотя бы раз запустить бота. Админ добавляет картинки
-  в чужие паки от имени владельца.
-- К названию каждого пака в Telegram дописывается `@юзернейм_бота` (`TITLE_SUFFIX`).
-- Состояние мастера хранится в памяти: после перезапуска бота незавершённую настройку нужно начать заново.
+- A pack appears in Telegram with its first item; until then it is "empty" and does not count towards the limit.
+- Custom emoji can be sent by **Telegram Premium** users; stickers work for everyone.
+- An emoji pack holds up to **200** items, a sticker pack up to **120** (Telegram limits).
+- A pack belongs to the user who created it, and that user must have started the bot at least once.
+  Admins add items to other people's packs on the owner's behalf.
+- Every pack title in Telegram gets `@bot_username` appended (`TITLE_SUFFIX`).
+- The wizard state lives in memory: after a bot restart an unfinished setup has to be started again.

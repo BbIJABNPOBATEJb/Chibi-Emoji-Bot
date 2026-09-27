@@ -554,13 +554,21 @@ def render(skin: Skin, settings: RenderSettings, size: int = EMOJI_SIZE) -> Rend
 
 
 def _downsample(img: np.ndarray, s: int) -> np.ndarray:
+    """Supersampled frame -> output: smooth silhouette, crisp texels.
+
+    Coverage (alpha) is averaged over each s×s block, so the figure's edges are anti-aliased.
+    Colour is taken from the block's centre sample instead: averaging colours too would
+    smear neighbouring skin texels into each other and make the whole skin look blurry.
+    """
     h, w = img.shape[:2]
     f = img.astype(np.float32) / 255.0
     a = f[..., 3:4]
     pm = np.concatenate([f[..., :3] * a, a], -1)
     pm = pm.reshape(h // s, s, w // s, s, 4).mean(axis=(1, 3))
     a2 = pm[..., 3:4]
-    rgb = pm[..., :3] / np.maximum(a2, 1e-6)
+    smooth_rgb = pm[..., :3] / np.maximum(a2, 1e-6)
+    centre = f[s // 2::s, s // 2::s][: h // s, : w // s]
+    rgb = np.where(centre[..., 3:4] > 0.5, centre[..., :3], smooth_rgb)  # edge blocks fall back to the mix
     out = np.concatenate([rgb, a2], -1)
     return np.clip(out * 255 + 0.5, 0, 255).astype(np.uint8)
 

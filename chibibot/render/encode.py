@@ -115,10 +115,14 @@ def _ffmpeg(args: list[str], chunks: Iterable[bytes], out_suffix: str) -> bytes:
 def webm_bytes(frames: list[np.ndarray], fps: int) -> bytes:
     """RGBA frames -> VP9 WEBM with alpha within Telegram's 256 KB (quality steps down if needed)."""
     h, w = frames[0].shape[:2]
+    small = max(w, h) <= 128
     # bigger frames (512 px stickers) take a faster, slightly less thorough encoder setting
-    speed = "2" if max(w, h) <= 128 else "4"
+    speed = "2" if small else "4"
     bled = [_bleed(f) for f in frames]
-    for crf in (30, 38, 46, 54, 63):
+    # best quality that fits: 100 px emoji stay far below the limit even at CRF 12, 512 px
+    # stickers usually fit around 18-30; each try costs well under a second
+    ladder = (12, 18, 24, 30, 38, 46, 54, 63) if small else (18, 24, 30, 36, 42, 50, 63)
+    for crf in ladder:
         data = _ffmpeg(
             ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-framerate", str(fps), "-i", "pipe:0",
              "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", str(crf),

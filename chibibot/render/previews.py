@@ -255,6 +255,9 @@ def result_preview(skin: Skin, s: RenderSettings, size: int = 100) -> tuple[str,
     """
     if len(s.anims) > 1:
         variants = [(label_of(opt_anim(a)), s.variant(a)) for a in s.anims]
+        if len(variants) > 8:
+            # a big sheet in smooth mode takes ~20 s; pixel mode shows the motion just as well
+            variants = [(lab, v.copy(mode="pixel")) for lab, v in variants]
         cols = min(4, len(variants))
         if s.any_animated:
             data, name = animated_sheet(skin, variants, cols, 2, None)

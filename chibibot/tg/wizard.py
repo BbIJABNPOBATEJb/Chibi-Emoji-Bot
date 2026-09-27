@@ -474,6 +474,9 @@ def board_kb(step: str, s: RenderSettings, data: dict):
             mark = "✅ " if chosen else ("▫️ " if multi else "")
             buttons.append(btn(f"{mark}{i + 1}. {o.ru}", Wiz(act="set", val=f"{step}|{o.key}")))
         if step == "anim":
+            if multi:
+                rows.append([btn("🎬 Все анимации", Wiz(act="anims", val="all")),
+                             btn("↺ Только статичная", Wiz(act="anims", val="none"))])
             rows.append([buttons[0]])
             rows += chunks(buttons[1:], COLS[step])
         else:
@@ -658,6 +661,26 @@ async def cb_set(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot: 
         await _go(cq, state, bot, app, me, _next_step(step, data))
     else:
         await _go(cq, state, bot, app, me, step, push=False)
+
+
+@router.callback_query(W.config, Wiz.filter(F.act == "anims"))
+async def cb_anims_bulk(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot: Bot, app: App, me: User):
+    """«Все анимации» ticks every animated clip (the static variant stays as it was);
+    «Только статичная» goes back to just the static pose."""
+    data = await _guard(cq, state, app, me)
+    if data is None or data.get("replace"):
+        if data is not None:
+            await cq.answer()
+        return
+    s = _settings(data)
+    if callback_data.val == "all":
+        keep_static = "none" in s.anims
+        s.anims = [o.key for o in ANIMATIONS if o.key != "none" or keep_static]
+        s.anim = s.anims[0]
+    else:
+        s.anims, s.anim = ["none"], "none"
+    await state.update_data(s=s.to_dict())
+    await _go(cq, state, bot, app, me, "anim", push=False)
 
 
 @router.callback_query(W.config, Wiz.filter(F.act == "part"))

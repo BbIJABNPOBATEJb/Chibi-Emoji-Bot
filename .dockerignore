@@ -1,0 +1,16 @@
+.env
+.env.*
+data/
+tests/
+**/__pycache__/
+*.pyc
+*.log
+.git
+.gitignore
+.gitattributes
+.claude/
+Dockerfile
+docker-compose.yml
+.dockerignore
+run.bat
+README.md

@@ -1,0 +1,32 @@
+services:
+  bot:
+    build: .
+    image: chibi-emoji-bot:latest
+    container_name: chibi-emoji-bot
+    restart: unless-stopped
+    # tini as PID 1: forwards SIGTERM so the bot stops cleanly and reaps render processes
+    init: true
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+      # log timestamps in the same zone as the bot's messages
+      TZ: ${TIMEZONE:-Europe/Moscow}
+    volumes:
+      # SQLite database, skins and thumbnails live here — back up this folder
+      - ./data:/app/data
+    stop_grace_period: 30s
+    # CPU use is governed by RENDER_WORKERS in .env (auto = one render process per available core).
+    # To cap it further add e.g. `cpus: 1.5` here — the value must not exceed the server's core count.
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    driver_opts:
+      # Many VPS / VPN hosts have an MTU below Docker's 1500 (e.g. 1448): big TLS packets then
+      # vanish and HTTPS requests from the container hang at random. 1400 is safe everywhere.
+      com.docker.network.driver.mtu: ${DOCKER_MTU:-1400}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import secrets
 import sys
 
@@ -19,7 +20,7 @@ from .jobs import Worker
 from .render.encode import ffmpeg_path
 from .sources import MojangClient, SkinStore
 from .stickers import StickerService
-from .tg import admin, convert, fallback, menu, packs, wizard
+from .tg import admin, alert, convert, fallback, menu, packs, wizard
 from .tg.app import App
 from .tg.middleware import UserMiddleware
 
@@ -64,12 +65,13 @@ def build_dispatcher(app: App) -> Dispatcher:
     mw = UserMiddleware(app)
     dp.message.outer_middleware(mw)
     dp.callback_query.outer_middleware(mw)
-    dp.include_routers(menu.router, admin.router, packs.router, convert.router, wizard.router, fallback.router)
+    dp.include_routers(menu.router, admin.router, alert.router, packs.router, convert.router, wizard.router,
+                       fallback.router)
     dp.errors.register(on_error)
     return dp
 
 
-async def main() -> None:
+async def main() -> bool:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -97,19 +99,29 @@ async def main() -> None:
     dp = build_dispatcher(app)
     await bot.set_my_commands(COMMANDS)
     retitle = asyncio.create_task(_retitle(app))
+    watchdog = asyncio.create_task(worker.watchdog())
     log.info("Бот @%s запущен (воркеров рендера: %s)", me.username, cfg.render_workers)
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         retitle.cancel()
+        watchdog.cancel()
         await mojang.close()
         await db.close()
         worker.shutdown()
         await bot.session.close()
+    return worker.replaced > 0
 
 
 def run() -> None:
+    hard_exit = False
     try:
-        asyncio.run(main())
+        hard_exit = asyncio.run(main())
     except KeyboardInterrupt:
         pass
+    if hard_exit:
+        # A render pool was thrown away while running. Python 3.12 may wait forever for its
+        # helper threads at interpreter exit; everything is closed already, so just leave.
+        logging.shutdown()
+        sys.stdout.flush()
+        os._exit(0)

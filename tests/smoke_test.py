@@ -98,6 +98,11 @@ class FakeTelegram(BaseSession):
             out["custom_emoji_id"] = st["ceid"]
         return out
 
+    def _too_big(self, stype, inp) -> bool:
+        """Like the real Telegram: custom emoji videos above ~64 KB are refused."""
+        fmt, data = self.uploads[inp.sticker]
+        return fmt == "video" and stype == "custom_emoji" and len(data) > 64 * 1024
+
     def _check_media(self, stype, inp):
         """Telegram's size rules: custom emoji 100x100, stickers with one side of exactly 512."""
         fmt, data = self.uploads[inp.sticker]
@@ -180,6 +185,8 @@ class FakeTelegram(BaseSession):
             assert len(m.title) <= 64
             for inp in m.stickers:
                 self._check_media(m.sticker_type, inp)
+                if self._too_big(m.sticker_type, inp):
+                    return self._err(bot, m, "STICKER_VIDEO_BIG")
             self.sets[m.name] = {"title": m.title, "owner": m.user_id, "type": m.sticker_type,
                                  "stickers": [self._new_sticker(s) for s in m.stickers]}
         elif name == "AddStickerToSet":
@@ -189,6 +196,8 @@ class FakeTelegram(BaseSession):
             assert s["owner"] == m.user_id, "must add with the owner's id"
             if len(s["stickers"]) >= (200 if s["type"] == "custom_emoji" else 120):
                 return self._err(bot, m, "STICKERS_TOO_MUCH")
+            if self._too_big(s["type"], m.sticker):
+                return self._err(bot, m, "STICKER_VIDEO_BIG")
             self._check_media(s["type"], m.sticker)
             s["stickers"].append(self._new_sticker(m.sticker))
         elif name == "GetStickerSet":
@@ -717,6 +726,18 @@ async def main():
     check(eset["type"] == "custom_emoji" and len(eset["stickers"]) == 3
           and fake.checked[-1][0] == "custom_emoji" and fake.checked[-1][2] == 100,
           "sticker pack converted to a 100 px emoji pack")
+
+    print("== /alert broadcast after an outage")
+    await user.text("/alert")
+    check("Оповещение" not in (user.last().get("text") or ""), "/alert is ignored for regular players")
+    await adm.text("/alert")
+    check("получат 1 чел." in adm.last()["text"], "preview counts recent users except the admin")
+    await adm.click("Отправить")
+    check("Бот снова работает" in user.last()["text"], "player received the alert")
+    check("Доставлено: 1" in adm.last()["text"], "admin gets a delivery report")
+    await adm.text("/alert 5 Проверка связи")
+    check("Проверка связи" in adm.last()["text"], "custom text and window")
+    await adm.click("Отмена")
 
     print("== user cannot open someone else's pack")
     admin_pack = await app.db.create_pack(ADMIN_ID, await app.stickers.new_name(), "Admin only", ADMIN_ID, None)

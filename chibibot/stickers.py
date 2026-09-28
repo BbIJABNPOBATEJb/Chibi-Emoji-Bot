@@ -29,6 +29,7 @@ def explain(exc: Exception) -> str:
         "PEER_ID_INVALID": "владелец пака не запускал бота или заблокировал его",
         "USER_IS_BOT": "владельцем пака не может быть бот",
         "STICKER_VIDEO_LONG": "анимация длиннее 3 секунд",
+        "STICKER_VIDEO_BIG": "видео получилось слишком тяжёлым для Telegram",
         "STICKER_PNG_DIMENSIONS": "неверный размер картинки",
         "STICKER_EMOJI_INVALID": "Telegram не принял выбранный эмодзи",
         "sticker set name is already occupied": "такое имя набора уже занято",

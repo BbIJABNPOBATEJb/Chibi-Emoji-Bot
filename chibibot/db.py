@@ -282,6 +282,11 @@ class Database:
             rows = await cur.fetchall()
         return [(self._user(r), r["packs"]) for r in rows]
 
+    async def users_seen_since(self, since: str) -> list[User]:
+        """Everyone who pressed or wrote anything after `since` (last_seen is bumped on every update)."""
+        async with self.c.execute("SELECT * FROM users WHERE last_seen>=? ORDER BY last_seen DESC", (since,)) as cur:
+            return [self._user(r) for r in await cur.fetchall()]
+
     async def count_users(self) -> int:
         async with self.c.execute("SELECT COUNT(*) FROM users") as cur:
             return (await cur.fetchone())[0]

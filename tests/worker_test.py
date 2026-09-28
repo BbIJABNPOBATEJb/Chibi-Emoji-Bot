@@ -24,6 +24,14 @@ def die_once(marker: str) -> str:
     return "survived"
 
 
+def busy(i: int) -> int:
+    import time
+    t = time.time()
+    while time.time() - t < 0.05:
+        pass
+    return i
+
+
 def always_die() -> None:
     os._exit(137)
 
@@ -51,8 +59,26 @@ async def main() -> None:
     results = await asyncio.gather(*(w.run(job_detect, skin) for _ in range(6)))
     assert results == [False] * 6
     print("  ok   parallel jobs after recovery")
+
+    # Python 3.12 bug the bot hit in production: with max_tasks_per_child, workers that retire
+    # while work is queued are not replaced and the pool silently ends up with no processes.
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    w.pool.shutdown(wait=False)
+    w.pool = ProcessPoolExecutor(max_workers=2, mp_context=multiprocessing.get_context("spawn"),
+                                 max_tasks_per_child=2)
+    dog = asyncio.create_task(w.watchdog(interval=1.0))
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*(w.run(busy, i) for i in range(20))), 60)
+    finally:
+        dog.cancel()
+    assert sorted(results) == list(range(20)), results
+    print("  ok   silently stalled pool (no live processes) is replaced by the watchdog, all 20 jobs done")
     w.shutdown()
     print("ALL OK")
+    # the abandoned stalled pool can keep Python 3.12 waiting at exit (the bot exits hard too)
+    sys.stdout.flush()
+    os._exit(0)
 
 
 if __name__ == "__main__":

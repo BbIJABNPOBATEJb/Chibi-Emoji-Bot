@@ -20,10 +20,12 @@ from .render.skin import load_skin
 log = logging.getLogger(__name__)
 
 
-def job_emoji(skin_png: bytes, slim: bool | None, settings: dict, size: int = 100) -> tuple[str, bytes, bytes]:
+def job_emoji(skin_png: bytes, slim: bool | None, settings: dict, size: int = 100,
+              max_bytes: int | None = None) -> tuple[str, bytes, bytes]:
     """-> (sticker format 'static'|'video', file bytes, 100x100 PNG thumbnail).
 
-    size is 100 for custom emoji and 512 for regular stickers.
+    size is 100 for custom emoji and 512 for regular stickers; max_bytes overrides the
+    video size cap (used to retry when Telegram still finds a video too big).
     """
     skin = load_skin(skin_png, slim)
     s = RenderSettings.from_dict(settings)
@@ -31,7 +33,7 @@ def job_emoji(skin_png: bytes, slim: bool | None, settings: dict, size: int = 10
     first = encode.png_bytes(res.frames[0])
     thumb = first if size == 100 else encode.png_bytes(_thumb(res.frames[0]))
     if res.animated:
-        return "video", encode.webm_bytes(res.frames, res.fps), thumb
+        return "video", encode.webm_bytes(res.frames, res.fps, max_bytes), thumb
     return "static", first, thumb
 
 
@@ -90,26 +92,81 @@ class Worker:
     def __init__(self, workers: int):
         self.workers = max(1, workers)
         self.pool = self._new_pool()
+        self.replaced = 0  # pools thrown away after a crash or stall
         # animated example sheets need ~300 MB with ffmpeg: never run two at once
         self._heavy: asyncio.Semaphore | None = None
 
     def _new_pool(self) -> ProcessPoolExecutor:
+        # No max_tasks_per_child: on Python 3.12 a worker that retires with work still queued is
+        # not replaced, and the pool silently ends up with zero processes (every job hangs).
         return ProcessPoolExecutor(
             max_workers=self.workers,
             # "spawn" everywhere: forking the running bot (event loop + network threads) is fragile
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_exit_with_parent,
-            # recycle processes now and then so memory fragmentation cannot build up
-            max_tasks_per_child=200,
         )
 
     def _replace(self, broken: ProcessPoolExecutor) -> None:
         if self.pool is broken:
             self.pool = self._new_pool()
+            self.replaced += 1
             try:
                 broken.shutdown(wait=False, cancel_futures=True)
             except Exception:  # noqa: BLE001
                 pass
+
+    def _stalled(self, pool: ProcessPoolExecutor) -> bool:
+        """Work is queued but not a single render process is alive to do it."""
+        pending = getattr(pool, "_pending_work_items", None) or {}
+        procs = getattr(pool, "_processes", None) or {}
+        return bool(pending) and not any(p.is_alive() for p in list(procs.values()))
+
+    def _unstick(self, pool: ProcessPoolExecutor) -> None:
+        """Replace a stalled pool; its waiting jobs fail with BrokenProcessPool and are retried."""
+        mgr = getattr(pool, "_executor_manager_thread", None)
+        if mgr is not None and hasattr(mgr, "terminate_broken"):
+            # The executor's own teardown (Python 3.12): fails the waiting futures, kills the
+            # workers and lets its helper threads finish — otherwise they would keep the
+            # interpreter from exiting when the bot stops.
+            try:
+                mgr.terminate_broken(None)
+                wakeup = getattr(pool, "_executor_manager_thread_wakeup", None)
+                if wakeup is not None:
+                    wakeup.wakeup()
+                self._replace(pool)
+                return
+            except Exception:  # noqa: BLE001 - fall back to doing it by hand
+                log.exception("terminate_broken failed, falling back")
+        pending = list((getattr(pool, "_pending_work_items", None) or {}).values())
+        # fail the waiting jobs *before* shutting the pool down: shutdown would cancel them,
+        # and a cancellation would travel up into the Telegram handler instead of a retry
+        for item in pending:
+            fut = getattr(item, "future", None)
+            if fut is not None and not fut.done():
+                try:
+                    fut.set_exception(BrokenProcessPool("render pool stalled"))
+                except Exception:  # noqa: BLE001 - finished in the meantime
+                    pass
+        self._replace(pool)
+        for p in list((getattr(pool, "_processes", None) or {}).values()):
+            if p.is_alive():
+                p.terminate()
+
+    async def watchdog(self, interval: float = 30.0) -> None:
+        """Safety net: a pool that stays without live processes while work waits gets replaced."""
+        seen = None
+        while True:
+            await asyncio.sleep(interval)
+            pool = self.pool
+            if self._stalled(pool):
+                if seen is pool:  # stalled on two checks in a row: not just a respawn in progress
+                    log.error("render pool has work but no live processes; replacing it")
+                    self._unstick(pool)
+                    seen = None
+                else:
+                    seen = pool
+            else:
+                seen = None
 
     async def run(self, fn, *args, heavy: bool = False):
         if heavy:

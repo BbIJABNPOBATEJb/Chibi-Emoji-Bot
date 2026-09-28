@@ -135,7 +135,8 @@ async def cmd_admins(message: Message, app: App, admin: bool):
     for i in ids:
         src = " (из .env)" if i in app.cfg.admin_ids else ""
         lines.append(f"• {await app.who(i)} <code>{i}</code>{src}")
-    lines.append("\n/addadmin ID — назначить, /deladmin ID — снять, /setlimit ID — лимиты игрока.")
+    lines.append("\n/addadmin ID — назначить, /deladmin ID — снять, /setlimit ID — лимиты игрока,\n"
+                 "/alert — оповестить тех, кто недавно писал боту.")
     await message.answer("\n".join(lines))
 
 

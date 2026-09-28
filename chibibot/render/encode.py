@@ -17,7 +17,8 @@ from typing import Callable, Iterable
 import numpy as np
 from PIL import Image
 
-MAX_WEBM_BYTES = 256 * 1024
+MAX_WEBM_BYTES = 256 * 1024        # regular video stickers
+MAX_EMOJI_WEBM_BYTES = 64 * 1024   # custom emoji: Telegram answers STICKER_VIDEO_BIG above ~64 KB
 
 
 class EncodeError(RuntimeError):
@@ -112,10 +113,12 @@ def _ffmpeg(args: list[str], chunks: Iterable[bytes], out_suffix: str) -> bytes:
                 pass
 
 
-def webm_bytes(frames: list[np.ndarray], fps: int) -> bytes:
-    """RGBA frames -> VP9 WEBM with alpha within Telegram's 256 KB (quality steps down if needed)."""
+def webm_bytes(frames: list[np.ndarray], fps: int, max_bytes: int | None = None) -> bytes:
+    """RGBA frames -> VP9 WEBM with alpha within Telegram's size limit (quality steps down if needed)."""
     h, w = frames[0].shape[:2]
     small = max(w, h) <= 128
+    if max_bytes is None:
+        max_bytes = MAX_EMOJI_WEBM_BYTES if small else MAX_WEBM_BYTES
     # bigger frames (512 px stickers) take a faster, slightly less thorough encoder setting
     speed = "2" if small else "4"
     bled = [_bleed(f) for f in frames]
@@ -130,7 +133,7 @@ def webm_bytes(frames: list[np.ndarray], fps: int) -> bytes:
              "-t", "3", "-f", "webm"],
             (f.tobytes() for f in bled), ".webm",
         )
-        if len(data) <= MAX_WEBM_BYTES:
+        if len(data) <= max_bytes:
             return data
     raise EncodeError("анимация получилась слишком большой для Telegram")
 

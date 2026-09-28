@@ -71,7 +71,15 @@ async def render_and_upload(app: App, pack: Pack, items: list[Item], actor_id: i
                 if fut is None:
                     raise StickerError("файл скина потерялся")
                 fmt, blob, thumb = await fut
-                st = await app.stickers.add(pack, fmt, blob, it.emoji, [it.keyword or it.label])
+                try:
+                    st = await app.stickers.add(pack, fmt, blob, it.emoji, [it.keyword or it.label])
+                except StickerError as exc:
+                    if fmt != "video" or "тяжёлым" not in str(exc):
+                        raise
+                    # Telegram's real cap can be below what it documents: re-encode at half the size
+                    fmt, blob, thumb = await app.worker.run(job_emoji, app.store.load_bytes(it.sha1), it.slim,
+                                                            it.settings, pack.k.size, len(blob) // 2)
+                    st = await app.stickers.add(pack, fmt, blob, it.emoji, [it.keyword or it.label])
                 e = await app.db.add_emoji(pack.id, it.label, it.source, it.sha1, it.slim, it.settings,
                                            fmt == "video", it.emoji, st.file_id, st.file_unique_id,
                                            st.custom_emoji_id, actor_id)

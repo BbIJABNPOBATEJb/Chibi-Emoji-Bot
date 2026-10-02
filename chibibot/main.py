@@ -16,13 +16,14 @@ from aiogram.types import BotCommand, ErrorEvent
 
 from .config import load_config
 from .db import Database
-from .jobs import Worker
+from .jobs import Worker, memory_limit_mb, workers_for_memory
 from .render.encode import ffmpeg_path
 from .sources import MojangClient, SkinStore
 from .stickers import StickerService
 from .tg import admin, alert, convert, fallback, menu, packs, wizard
 from .tg.app import App
 from .tg.middleware import UserMiddleware
+from .tg.uploader import announce_interrupted
 
 log = logging.getLogger("chibibot")
 
@@ -59,6 +60,15 @@ async def _retitle(app: App) -> None:
         log.warning("Не удалось обновить названия паков: %r", exc)
 
 
+async def _announce(app: App, bot: Bot) -> None:
+    try:
+        n = await announce_interrupted(app, bot)
+        if n:
+            log.info("Сообщил о прерванных загрузках: %s", n)
+    except Exception as exc:  # noqa: BLE001 - a courtesy message, never worth crashing the bot
+        log.warning("Не удалось сообщить о прерванных загрузках: %r", exc)
+
+
 def build_dispatcher(app: App) -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
     dp["app"] = app
@@ -85,7 +95,11 @@ async def main() -> bool:
     db = Database(cfg.db_path)
     await db.open()
     bot = Bot(cfg.token, default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True))
-    worker = Worker(cfg.render_workers)
+    workers = workers_for_memory(cfg.render_workers)
+    if workers < cfg.render_workers:
+        log.warning("Памяти %s МБ хватает на %s воркеров рендера вместо %s — увеличьте лимит (BOT_MEMORY), "
+                    "чтобы использовать больше", memory_limit_mb(), workers, cfg.render_workers)
+    worker = Worker(workers)
     await asyncio.to_thread(worker.warm_up)
     mojang = MojangClient()
     app = App(cfg, db, worker, StickerService(bot, db, cfg.title_suffix), mojang, SkinStore(cfg.skins_dir))
@@ -98,9 +112,10 @@ async def main() -> bool:
 
     dp = build_dispatcher(app)
     await bot.set_my_commands(COMMANDS)
+    await _announce(app, bot)
     retitle = asyncio.create_task(_retitle(app))
     watchdog = asyncio.create_task(worker.watchdog())
-    log.info("Бот @%s запущен (воркеров рендера: %s)", me.username, cfg.render_workers)
+    log.info("Бот @%s запущен (воркеров рендера: %s)", me.username, workers)
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:

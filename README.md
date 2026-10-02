@@ -115,9 +115,10 @@ to its log on startup — send it to the bot.
 | `MAX_BATCH_USER` / `MAX_BATCH_ADMIN` | 50 / 200 | skins per batch |
 | `TIMEZONE` | Europe/Moscow | time zone for the audit log and logs |
 | `DATA_DIR` | data | SQLite database, skins, thumbnails |
-| `RENDER_WORKERS` | auto | render processes: a number or `auto` (one per core, at most 4) |
+| `RENDER_WORKERS` | auto | render processes: a number or `auto` (one per core, at most 4); never more than the memory limit can feed |
 | `FFMPEG_PATH` | empty | path to ffmpeg if it is not in `PATH` |
 | `TITLE_SUFFIX` | auto | appended to every pack title: `auto` — `@bot_username`, `none` — nothing, or any text |
+| `BOT_MEMORY` | 1g | container memory limit (Docker only): `1g` runs 2 render processes, `2g` — 4 |
 | `DOCKER_MTU` | 1400 | container network MTU (Docker only, see below) |
 
 ## 🐳 Running on a server with Docker
@@ -149,7 +150,10 @@ Update: `git pull && docker compose up -d --build`. Stop: `docker compose down` 
   `-wal`/`-shm` files, `skins/`, `thumbs/`) into `./data` before the first start. The container fixes the
   folder's permissions itself.
 - **One token — one instance.** Two bots with the same token get in each other's way (`Conflict` in the logs).
-- **Resources.** `RENDER_WORKERS=auto` adapts to the number of cores, memory is capped with `mem_limit: 1g`.
+- **Resources.** `RENDER_WORKERS=auto` adapts to the number of cores, memory is capped with `BOT_MEMORY`
+  (1 GB by default). A busy render process needs about 300 MB, so the bot starts only as many as the limit
+  can feed (2 at 1 GB, 4 at 2 GB) and says so in the log. If an upload is cut short by a restart, the bot
+  tells the affected chats on the next start how far it got.
   To limit CPU further, add `cpus: 1.5` to `docker-compose.yml` — the value may not exceed the server's core
   count, otherwise Docker refuses to start the container.
 - **MTU.** The bot's network is created with MTU 1400. Many VPS/VPN hosts have an interface MTU below Docker's

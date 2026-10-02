@@ -543,13 +543,14 @@ def render(skin: Skin, settings: RenderSettings, size: int = EMOJI_SIZE) -> Rend
         x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
 
     out_frames = []
-    for img in native:
+    for i, img in enumerate(native):
         crop = img[y0:y1, x0:x1]
         if hd:
             crop = _downsample(crop, ss)
         elif k > 1:
             crop = np.repeat(np.repeat(crop, k, 0), k, 1)
         out_frames.append(_place(crop, size, smooth=hd))
+        native[i] = None  # a 512 px clip is ~65 MB per copy: do not keep both around
     return RenderResult(out_frames, fps, settings.animated, rig.slim)
 
 

@@ -485,6 +485,14 @@ class Database:
             r = await cur.fetchone()
         return r[0] if r else None
 
+    async def kv_del(self, key: str) -> None:
+        await self.c.execute("DELETE FROM kv WHERE key=?", (key,))
+        await self.c.commit()
+
+    async def kv_prefix(self, prefix: str) -> list[tuple[str, str]]:
+        async with self.c.execute("SELECT key, value FROM kv WHERE key LIKE ? ORDER BY key", (prefix + "%",)) as cur:
+            return [(r[0], r[1]) for r in await cur.fetchall()]
+
     async def kv_set(self, key: str, value: str) -> None:
         await self.c.execute("INSERT INTO kv(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                              (key, value))

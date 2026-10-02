@@ -116,7 +116,7 @@ async def cb_convert_ok(cq: CallbackQuery, callback_data: PackCB, bot: Bot, app:
 
         res = await render_and_upload(
             app, new, [Item(e.label, e.source, e.skin_sha1, e.slim, e.settings, e.emoji) for e in todo],
-            me.id, progress)
+            me.id, progress, cq.message.chat.id)
 
         if not res.ok:
             await app.db.delete_pack(new.id)  # nothing made it into Telegram: no empty leftover

@@ -739,6 +739,40 @@ async def main():
     check("Проверка связи" in adm.last()["text"], "custom text and window")
     await adm.click("Отмена")
 
+    print("== upload interrupted by a restart")
+    from chibibot.tg import uploader
+    check(await db.kv_prefix(uploader.JOB_PREFIX) == [], "finished uploads leave no note behind")
+    upack = await db.get_pack(pack.id)
+    one = uploader.Item("x", "nick", "0" * 40, None, {}, "😀")
+    real = uploader._render_and_upload
+
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    async def forever(*a, **k):
+        await asyncio.sleep(3600)
+
+    uploader._render_and_upload = boom
+    try:
+        await uploader.render_and_upload(app, upack, [one], USER_ID, None, USER_ID)
+    except RuntimeError:
+        pass
+    check(await db.kv_prefix(uploader.JOB_PREFIX) == [], "a failed upload leaves no note either")
+    uploader._render_and_upload = forever
+    task = asyncio.ensure_future(uploader.render_and_upload(app, upack, [one] * 5, USER_ID, None, USER_ID))
+    await asyncio.sleep(0.2)
+    task.cancel()  # what a stopping bot does to a running handler
+    await asyncio.gather(task, return_exceptions=True)
+    uploader._render_and_upload = real
+    check(len(await db.kv_prefix(uploader.JOB_PREFIX)) == 1, "an upload cut short keeps its note")
+    await db.add_emoji(upack.id, "late", "nick", "0" * 40, None, {}, False, "😀", "f", "u", None, USER_ID)
+    check(await uploader.announce_interrupted(app, bot) == 1, "interrupted upload announced on the next start")
+    check("прервалась" in user.last()["text"] and "1 из 5" in user.last()["text"], "player is told how far it got")
+    check(await db.kv_prefix(uploader.JOB_PREFIX) == [] and await uploader.announce_interrupted(app, bot) == 0,
+          "announced only once")
+    late = next(e for e in await db.pack_emojis(upack.id) if e.label == "late")
+    await db.delete_emoji(late.id)
+
     print("== user cannot open someone else's pack")
     admin_pack = await app.db.create_pack(ADMIN_ID, await app.stickers.new_name(), "Admin only", ADMIN_ID, None)
     from chibibot.tg.ui import PackCB

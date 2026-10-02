@@ -67,6 +67,14 @@ def _exit_with_parent() -> None:
 
     Without it a force-killed bot leaves idle render processes behind on Windows.
     """
+    # If the container runs out of memory, let the kernel kill a render process (and the ffmpeg
+    # it started), not the bot itself: a dead render process is replaced and its job retried,
+    # a dead bot means a restart and every unfinished upload lost.
+    try:
+        with open("/proc/self/oom_score_adj", "w") as fh:
+            fh.write("900")
+    except OSError:
+        pass  # not Linux, or not allowed
     parent = multiprocessing.parent_process()
     if parent is None:
         return
@@ -76,6 +84,37 @@ def _exit_with_parent() -> None:
         os._exit(0)
 
     threading.Thread(target=wait, daemon=True).start()
+
+
+# Peak memory of one busy render process: a 512 px animated sticker plus its ffmpeg.
+WORKER_MB = 300
+# The bot process itself (aiogram, database, upload buffers).
+BASE_MB = 350
+
+
+def memory_limit_mb() -> int | None:
+    """Memory this process may use: the container's cgroup limit, else the machine's RAM."""
+    limits = []
+    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw = open(path).read().strip()
+            if raw.isdigit() and int(raw) < 1 << 60:
+                limits.append(int(raw) >> 20)
+        except OSError:
+            pass
+    try:
+        limits.append(os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") >> 20)
+    except (AttributeError, ValueError, OSError):
+        pass
+    return min(limits) if limits else None
+
+
+def workers_for_memory(wanted: int) -> int:
+    """Never start more render processes than the memory limit can feed."""
+    limit = memory_limit_mb()
+    if limit is None:
+        return max(1, wanted)
+    return max(1, min(wanted, (limit - BASE_MB) // WORKER_MB))
 
 
 class WorkerCrashed(RuntimeError):

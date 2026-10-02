@@ -891,7 +891,7 @@ async def _do_create(cq: CallbackQuery, bot: Bot, app: App, me: User, admin: boo
         async def progress(n: int, of: int) -> None:
             await set_caption(bot, chat_id, board, f"⏳ Рисую и загружаю в «{esc(pack.title)}»: {n}/{of}…")
 
-        res = await render_and_upload(app, pack, todo, me.id, progress)
+        res = await render_and_upload(app, pack, todo, me.id, progress, chat_id)
         ok, failed = res.ok, res.failed
         if ok:
             await app.db.touch_pack(pack.id, me.id, settings=sd)

@@ -121,7 +121,9 @@ def webm_bytes(frames: list[np.ndarray], fps: int, max_bytes: int | None = None)
         max_bytes = MAX_EMOJI_WEBM_BYTES if small else MAX_WEBM_BYTES
     # bigger frames (512 px stickers) take a faster, slightly less thorough encoder setting
     speed = "2" if small else "4"
-    bled = [_bleed(f) for f in frames]
+    # bleed in place, frame by frame: a second full copy of a 512 px clip would cost ~65 MB
+    for i, f in enumerate(frames):
+        frames[i] = _bleed(f)
     # best quality that fits: 100 px emoji stay far below the limit even at CRF 12, 512 px
     # stickers usually fit around 18-30; each try costs well under a second
     ladder = (12, 18, 24, 30, 38, 46, 54, 63) if small else (18, 24, 30, 36, 42, 50, 63)
@@ -131,7 +133,7 @@ def webm_bytes(frames: list[np.ndarray], fps: int, max_bytes: int | None = None)
              "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", str(crf),
              "-deadline", "good", "-cpu-used", speed, "-row-mt", "1", "-threads", "2", "-auto-alt-ref", "0",
              "-t", "3", "-f", "webm"],
-            (f.tobytes() for f in bled), ".webm",
+            (f.tobytes() for f in frames), ".webm",
         )
         if len(data) <= max_bytes:
             return data

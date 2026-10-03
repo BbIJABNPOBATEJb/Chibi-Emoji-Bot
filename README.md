@@ -128,6 +128,7 @@ existing records the first time it starts with this feature.
 | `FFMPEG_PATH` | empty | path to ffmpeg if it is not in `PATH` |
 | `TITLE_SUFFIX` | auto | appended to every pack title: `auto` — `@bot_username`, `none` — nothing, or any text |
 | `BOT_MEMORY` | 1g | container memory limit (Docker only): `1g` runs 2 render processes, `2g` — 4 |
+| `BOT_CPUS` | 0 | hard CPU cap for the container (Docker only), e.g. `6` on a shared machine; `0` — none |
 | `DOCKER_MTU` | 1400 | container network MTU (Docker only, see below) |
 
 ## 🐳 Running on a server with Docker
@@ -163,8 +164,9 @@ Update: `git pull && docker compose up -d --build`. Stop: `docker compose down` 
   (1 GB by default). A busy render process needs about 300 MB, so the bot starts only as many as the limit
   can feed (2 at 1 GB, 4 at 2 GB) and says so in the log. If an upload is cut short by a restart, the bot
   tells the affected chats on the next start how far it got.
-  To limit CPU further, add `cpus: 1.5` to `docker-compose.yml` — the value may not exceed the server's core
-  count, otherwise Docker refuses to start the container.
+  On a shared machine cap the CPU with `BOT_CPUS` (e.g. `6`) — the value may not exceed the server's core
+  count, otherwise Docker refuses to start the container. Example for a 16-core host with other services:
+  `BOT_MEMORY=3g`, `RENDER_WORKERS=6`, `BOT_CPUS=6`.
 - **MTU.** The bot's network is created with MTU 1400. Many VPS/VPN hosts have an interface MTU below Docker's
   default 1500 (e.g. 1448): large TLS packets then get lost and HTTPS requests from the container (Mojang,
   file downloads) hang at random. If your MTU is even lower (`ip link` → `mtu`), set `DOCKER_MTU` 50 below it

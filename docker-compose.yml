@@ -15,10 +15,12 @@ services:
       # SQLite database, skins and thumbnails live here — back up this folder
       - ./data:/app/data
     stop_grace_period: 30s
-    # CPU use is governed by RENDER_WORKERS in .env (auto = one render process per available core).
-    # To cap it further add e.g. `cpus: 1.5` here — the value must not exceed the server's core count.
+    # CPU use is governed by RENDER_WORKERS in .env (auto = one render process per core, at most 4).
+    # BOT_CPUS caps it hard on a shared machine (e.g. 6); 0 = no cap. It must not exceed the server's
+    # core count.
+    cpus: ${BOT_CPUS:-0}
     # The bot starts as many render processes as this allows (about 300 MB each, at most
-    # RENDER_WORKERS): 1g -> 2, 2g -> 4. Raise BOT_MEMORY in .env on bigger servers.
+    # RENDER_WORKERS): 1g -> 2, 2g -> 4, 3g -> up to 9. Raise BOT_MEMORY in .env on bigger servers.
     mem_limit: ${BOT_MEMORY:-1g}
     logging:
       driver: json-file

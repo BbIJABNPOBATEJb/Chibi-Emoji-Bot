@@ -136,7 +136,8 @@ async def cmd_admins(message: Message, app: App, admin: bool):
         src = " (из .env)" if i in app.cfg.admin_ids else ""
         lines.append(f"• {await app.who(i)} <code>{i}</code>{src}")
     lines.append("\n/addadmin ID — назначить, /deladmin ID — снять, /setlimit ID — лимиты игрока,\n"
-                 "/alert — оповестить тех, кто недавно писал боту.")
+                 "/alert — оповестить тех, кто недавно писал боту,\n"
+                 "/stats — графики активности и роста, /fresh — свежие паки игроков.")
     await message.answer("\n".join(lines))
 
 
@@ -223,11 +224,3 @@ async def cmd_setlimit(message: Message, command: CommandObject, app: App, me: U
     await app.db.log(me.id, "limits_set", details=f"id {uid}: паки {args[1]}, эмодзи {args[2] if len(args) > 2 else '='}")
     await message.answer("✅ Сохранено.\n\n" + await limits_card(app, uid))
 
-
-@router.message(Command("stats"))
-async def cmd_stats(message: Message, app: App, admin: bool):
-    if not admin:
-        return
-    st = await app.db.stats()
-    await message.answer(f"📊 Пользователей: {st['users']}\nПаков: {st['packs']}\n"
-                         f"Эмодзи: {st['emojis']} (анимированных: {st['animated']})")

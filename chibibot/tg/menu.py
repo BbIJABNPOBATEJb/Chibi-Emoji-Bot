@@ -62,6 +62,7 @@ async def menu_view(app: App, me: User, admin: bool) -> tuple[str, object]:
     rows.append([btn("📦 Мои паки", Menu(act="packs")), btn("➕ Новый пак", Menu(act="new"))])
     if admin:
         rows.append([btn("👑 Все паки", AdminCB(act="packs")), btn("📜 Журнал", AdminCB(act="log"))])
+        rows.append([btn("📊 Статистика", AdminCB(act="st", arg=1)), btn("🔥 Свежие паки", AdminCB(act="fresh", arg=1))])
         rows.append([btn("👥 Пользователи", AdminCB(act="users"))])
     rows.append([btn("❓ Как это работает", Menu(act="help"))])
     return text, kb(*rows)

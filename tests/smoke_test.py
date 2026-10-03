@@ -350,6 +350,16 @@ async def main():
     CHATS.extend([user, adm])
     t0 = time.time()
 
+    print("== statistics on an empty database")
+    from chibibot import stats
+    from chibibot.render import charts
+    empty_ok = True
+    for mi in range(len(stats.METRICS)):
+        for pi in range(len(stats.PERIODS)):
+            spec, cap = await stats.build(db, app.tz, mi, pi)
+            empty_ok &= charts.render(spec)[:4] == b"\x89PNG" and "Всего пользователей: <b>0</b>" in cap
+    check(empty_ok, "every chart and period renders with no data at all")
+
     print("== user: menu and new pack")
     await user.text("/start")
     txt = user.last()["text"]
@@ -772,6 +782,44 @@ async def main():
           "announced only once")
     late = next(e for e in await db.pack_emojis(upack.id) if e.label == "late")
     await db.delete_emoji(late.id)
+
+    print("== admin statistics and fresh packs")
+    seen = {uid for _, uid in await db.activity_since("")}
+    check({USER_ID, ADMIN_ID} <= seen, "activity is recorded per user and hour")
+    shown = len(user.mine())
+    await user.text("/stats")
+    await user.text("/fresh")
+    check(len(user.mine()) == shown, "/stats and /fresh are ignored for regular players")
+    await adm.text("/menu")
+    await adm.click("📊 Статистика")
+    m = adm.last()
+    cap = m.get("caption") or ""
+    check("photo" in m and "Статистика за неделю" in cap, "dashboard opens as a chart for the week")
+    check(fake.media[m["message_id"]][:4] == b"\x89PNG", "chart is a PNG")
+    (out / "stats_active_week.png").write_bytes(fake.media[m["message_id"]])
+    async with db.c.execute("SELECT COUNT(*) FROM usage WHERE kind='add'") as cur:
+        made = (await cur.fetchone())[0]
+    check(f"Всего пользователей: <b>{await db.count_users()}</b>" in cap
+          and f"создано за всё время: <b>{made}</b>" in cap, "summary numbers match the database")
+    for label in ("🆕 Новые", "🎨 Создано", "📈 Всего юзеров", "📦 Всего стикеров"):
+        await adm.click(label)
+        btns = [b["text"] for row in adm.last()["reply_markup"]["inline_keyboard"] for b in row]
+        check("• " + label in btns and "photo" in adm.last(), f"chart «{label}»")
+    (out / "stats_items_week.png").write_bytes(fake.media[adm.last()["message_id"]])
+    for label, title in (("24 ч", "за 24 часа"), ("Месяц", "за месяц"), ("Год", "за год"), ("Всё", "за всё время")):
+        await adm.click(label)
+        check(f"Статистика {title}" in adm.last()["caption"], f"period «{label}»")
+    await adm.click("🔥 Свежие паки")
+    m = adm.last()
+    cap = m.get("caption") or ""
+    check("photo" in m and "Свежие паки за неделю" in cap and "Переименованный" in cap
+          and "Самые активные авторы" in cap, "fresh packs: the player's pack with its authors")
+    check(all(p.title not in cap for p in await db.user_packs(ADMIN_ID)), "admins' own packs are left out")
+    (out / "fresh.png").write_bytes(fake.media[m["message_id"]])
+    await adm.click("24 ч")
+    check("за 24 часа" in adm.last()["caption"], "fresh packs for another period")
+    await adm.click("📊 Статистика")
+    check("Статистика" in adm.last()["caption"], "back to the charts")
 
     print("== user cannot open someone else's pack")
     admin_pack = await app.db.create_pack(ADMIN_ID, await app.stickers.new_name(), "Admin only", ADMIN_ID, None)

@@ -20,7 +20,7 @@ from .jobs import Worker, memory_limit_mb, workers_for_memory
 from .render.encode import ffmpeg_path
 from .sources import MojangClient, SkinStore
 from .stickers import StickerService
-from .tg import admin, alert, convert, fallback, menu, packs, wizard
+from .tg import admin, alert, convert, fallback, menu, packs, stats, wizard
 from .tg.app import App
 from .tg.middleware import UserMiddleware
 from .tg.uploader import announce_interrupted
@@ -75,8 +75,8 @@ def build_dispatcher(app: App) -> Dispatcher:
     mw = UserMiddleware(app)
     dp.message.outer_middleware(mw)
     dp.callback_query.outer_middleware(mw)
-    dp.include_routers(menu.router, admin.router, alert.router, packs.router, convert.router, wizard.router,
-                       fallback.router)
+    dp.include_routers(menu.router, admin.router, alert.router, stats.router, packs.router, convert.router,
+                       wizard.router, fallback.router)
     dp.errors.register(on_error)
     return dp
 

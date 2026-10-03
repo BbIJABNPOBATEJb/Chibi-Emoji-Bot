@@ -32,6 +32,9 @@ themselves in Telegram.
 - 🔁 **Conversion** of an emoji pack into a sticker pack and back.
 - 👑 **Roles**: players manage only their own packs within limits; admins have no limits and see every pack,
   who created and changed it and when, a global audit log, users and their usage.
+- 📊 **Statistics for admins**: charts of active users, new users, items made and running totals for
+  24 h / week / month / year / all time, with the change against the previous period, plus
+  «🔥 Fresh packs» — a carousel of the players' packs that grew the most lately.
 
 <p align="center"><img src="docs/poses.png" alt="10 poses" width="90%"></p>
 
@@ -101,7 +104,13 @@ to its log on startup — send it to the bot.
 | `/admins` | list admins |
 | `/setlimit ID` | a player's limits and usage |
 | `/setlimit ID packs items_per_day` | personal limits (`0` — unlimited, `-` — as in `.env`) |
-| `/stats` | statistics |
+| `/stats` | charts: activity, new users, items made, total users and items — for 24 h / week / month / year / all time |
+| `/fresh` | the players' packs that grew the most in the last 24 h / week / month, with a preview sheet and links |
+| `/alert [hours] [text]` | tell everyone who wrote to the bot recently that it works again |
+
+Both dashboards are also in the admin menu (📊 Статистика, 🔥 Свежие паки). The charts are drawn by the bot itself
+(Pillow, no plotting library); activity is counted per user per hour, and the bot rebuilds the history it can from
+existing records the first time it starts with this feature.
 
 ## ⚙️ Settings (`.env`)
 
@@ -197,12 +206,14 @@ chibibot/
     engine.py           cameras, z-buffer, shading, outlines, scale fitting for 100 and 512 px
     encode.py           PNG, VP9 WEBM with alpha, MP4 previews (frames are streamed into ffmpeg)
     previews.py         labelled preview sheets
+    charts.py           admin statistics charts
     options.py          every option and its key
   sources.py            nicknames → skins (Mojang API + fallback mirror), PNGs, archives
   stickers.py           Telegram sets: create, add, replace, reorder, sync
-  db.py                 SQLite: users, packs, items, audit log, quotas
+  db.py                 SQLite: users, packs, items, audit log, quotas, activity
+  stats.py              statistics: periods, buckets, running totals, summary
   jobs.py               render process pool that survives a crashed process
-  tg/                   handlers: menu, packs, wizard, conversion, admin, quick add
+  tg/                   handlers: menu, packs, wizard, conversion, admin, statistics, quick add
 tests/                  smoke test and server checks
 docs/                   images for this README
 ```

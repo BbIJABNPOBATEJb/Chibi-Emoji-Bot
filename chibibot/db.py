@@ -79,7 +79,24 @@ CREATE TABLE IF NOT EXISTS usage(
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS usage_user ON usage(user_id, created_at);
+CREATE INDEX IF NOT EXISTS usage_time ON usage(created_at);
+-- one row per user per UTC hour in which they wrote or pressed anything (for the admin charts)
+CREATE TABLE IF NOT EXISTS activity(
+    user_id INTEGER NOT NULL,
+    hour TEXT NOT NULL,
+    PRIMARY KEY(user_id, hour)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS activity_hour ON activity(hour);
 """
+
+# Every emoji/sticker ever made, deleted ones included: the quota log, plus items from before
+# the quota log existed (their rows in `emojis` are all that is left of them).
+_ITEMS = """WITH items(ts, uid) AS (
+    SELECT created_at, user_id FROM usage WHERE kind='add'
+    UNION ALL
+    SELECT created_at, created_by FROM emojis
+     WHERE created_at < COALESCE((SELECT MIN(created_at) FROM usage WHERE kind='add'), '9999')
+) """
 
 # columns added after the first release: (table, column, declaration)
 MIGRATIONS = [
@@ -199,6 +216,7 @@ class Database:
                 await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
         await self.conn.commit()
         await self._migrate_default_smooth()
+        await self._migrate_activity()
 
     async def _migrate_default_smooth(self) -> None:
         """Once: the default render mode became "hd". Saved "last used" settings of users and
@@ -214,6 +232,20 @@ class Database:
                     d["mode"] = "hd"
                     await self.c.execute(f"UPDATE {table} SET settings=? WHERE id=?", (_j(d), r["id"]))
         await self.kv_set("migr_default_hd", "1")
+
+    async def _migrate_activity(self) -> None:
+        """Once: rebuild past activity from everything that carries a user and a time."""
+        if await self.kv_get("migr_activity"):
+            return
+        await self.c.execute(
+            """INSERT OR IGNORE INTO activity(user_id, hour)
+               SELECT id, substr(created_at, 1, 13) FROM users
+               UNION SELECT id, substr(last_seen, 1, 13) FROM users
+               UNION SELECT user_id, substr(created_at, 1, 13) FROM events
+               UNION SELECT user_id, substr(created_at, 1, 13) FROM usage
+               UNION SELECT created_by, substr(created_at, 1, 13) FROM packs
+               UNION SELECT created_by, substr(created_at, 1, 13) FROM emojis""")
+        await self.kv_set("migr_activity", "1")
 
     async def close(self) -> None:
         if self.conn:
@@ -236,6 +268,7 @@ class Database:
                is_admin=MAX(users.is_admin, excluded.is_admin)""",
             (uid, username, first, last, int(admin), ts, ts),
         )
+        await self.c.execute("INSERT OR IGNORE INTO activity(user_id, hour) VALUES(?,?)", (uid, ts[:13]))
         await self.c.commit()
         u = await self.get_user(uid)
         assert u is not None
@@ -437,6 +470,79 @@ class Database:
             async with self.c.execute(sql) as cur:
                 out[key] = (await cur.fetchone())[0]
         return out
+
+    # ---------------------------------------------------------------- admin statistics
+    async def first_seen(self) -> str | None:
+        async with self.c.execute("SELECT MIN(created_at) FROM users") as cur:
+            return (await cur.fetchone())[0]
+
+    async def activity_since(self, hour: str) -> list[tuple[str, int]]:
+        """(UTC hour 'YYYY-MM-DDTHH', user id) from that hour on."""
+        async with self.c.execute("SELECT hour, user_id FROM activity WHERE hour>=?", (hour,)) as cur:
+            return [(r[0], r[1]) for r in await cur.fetchall()]
+
+    async def user_times(self) -> list[str]:
+        """When each user first wrote to the bot, oldest first."""
+        async with self.c.execute("SELECT created_at FROM users ORDER BY created_at") as cur:
+            return [r[0] for r in await cur.fetchall()]
+
+    async def item_times(self, since: str = "") -> list[tuple[str, int]]:
+        """(time, author) of every emoji/sticker made since then, deleted ones included."""
+        async with self.c.execute(_ITEMS + "SELECT ts, uid FROM items WHERE ts>=? ORDER BY ts", (since,)) as cur:
+            return [(r[0], r[1]) for r in await cur.fetchall()]
+
+    async def count_items_before(self, ts: str) -> int:
+        async with self.c.execute(_ITEMS + "SELECT COUNT(*) FROM items WHERE ts<?", (ts,)) as cur:
+            return (await cur.fetchone())[0]
+
+    async def creator_times(self) -> list[str]:
+        """When each author made their first emoji/sticker, oldest first."""
+        async with self.c.execute(_ITEMS + "SELECT MIN(ts) AS t FROM items GROUP BY uid ORDER BY t") as cur:
+            return [r[0] for r in await cur.fetchall()]
+
+    async def items_by_kind(self) -> dict[str, int]:
+        """Emoji/stickers currently in packs, per pack kind."""
+        async with self.c.execute("SELECT p.kind, COUNT(*) FROM emojis e JOIN packs p ON p.id=e.pack_id "
+                                  "GROUP BY p.kind") as cur:
+            return {r[0] or EMOJI: r[1] for r in await cur.fetchall()}
+
+    async def count_packs_published(self) -> tuple[int, int]:
+        async with self.c.execute("SELECT COUNT(*), COALESCE(SUM(tg_created), 0) FROM packs") as cur:
+            r = await cur.fetchone()
+        return r[0], r[1]
+
+    async def fresh_packs(self, since: str, skip_owners: set[int], limit: int = 20) -> list[tuple[Pack, int]]:
+        """Published packs that grew the most since then: (pack, items added), busiest first."""
+        skip = ",".join(str(int(i)) for i in skip_owners) or "NULL"
+        async with self.c.execute(
+            f"""SELECT p.*, a.added,
+                   (SELECT COUNT(*) FROM emojis e WHERE e.pack_id=p.id) AS cnt,
+                   (SELECT COUNT(*) FROM emojis e WHERE e.pack_id=p.id AND e.animated=1) AS acnt
+                FROM (SELECT pack_id, COUNT(*) AS added, MAX(created_at) AS last FROM usage
+                      WHERE kind='add' AND created_at>=? AND pack_id IS NOT NULL GROUP BY pack_id) a
+                JOIN packs p ON p.id=a.pack_id
+                WHERE p.tg_created=1 AND p.owner_id NOT IN ({skip})
+                ORDER BY a.added DESC, cnt DESC, a.last DESC LIMIT ?""", (since, limit)) as cur:
+            rows = await cur.fetchall()
+        return [(self._pack(r), r["added"]) for r in rows if r["cnt"]]
+
+    async def top_creators(self, since: str, skip: set[int], limit: int = 5) -> list[tuple[int, int]]:
+        async with self.c.execute(
+            "SELECT user_id, COUNT(*) AS n FROM usage WHERE kind='add' AND created_at>=? "
+            "GROUP BY user_id ORDER BY n DESC LIMIT ?", (since, limit + len(skip))) as cur:
+            rows = [(r[0], r[1]) for r in await cur.fetchall()]
+        return [r for r in rows if r[0] not in skip][:limit]
+
+    async def pack_items_since(self, pack_id: int, since: str, limit: int) -> list[Emoji]:
+        """The pack's items made since then (all of them if none are that new), in pack order."""
+        async with self.c.execute("SELECT * FROM emojis WHERE pack_id=? AND created_at>=? ORDER BY position LIMIT ?",
+                                  (pack_id, since, limit)) as cur:
+            rows = await cur.fetchall()
+        if not rows:
+            async with self.c.execute("SELECT * FROM emojis WHERE pack_id=? ORDER BY position LIMIT ?",
+                                      (pack_id, limit)) as cur:
+                rows = await cur.fetchall()
+        return [self._emoji(r) for r in rows]
 
     # ---------------------------------------------------------------- daily quota
     async def add_usage(self, uid: int, pack_id: int | None, kind: str) -> None:

@@ -137,7 +137,8 @@ async def cmd_admins(message: Message, app: App, admin: bool):
         lines.append(f"• {await app.who(i)} <code>{i}</code>{src}")
     lines.append("\n/addadmin ID — назначить, /deladmin ID — снять, /setlimit ID — лимиты игрока,\n"
                  "/alert — оповестить тех, кто недавно писал боту,\n"
-                 "/stats — графики активности и роста, /fresh — свежие паки игроков.")
+                 "/stats — графики активности и роста, /fresh — свежие паки игроков,\n"
+                 "/news — новость о лошадях всем пользователям (сначала покажу, отправка — по кнопке).")
     await message.answer("\n".join(lines))
 
 

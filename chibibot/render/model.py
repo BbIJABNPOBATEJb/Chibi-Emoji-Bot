@@ -11,8 +11,31 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 HEAD, BODY, RARM, LARM, RLEG, LLEG = range(6)
+# horse parts (see horse.py): body, head with neck/ears/mane, front legs, hind legs, tail, saddle & co
+H_BODY, H_HEAD, H_FRONT, H_HIND, H_TAIL, H_TACK = range(6, 12)
 # Who wins an outline tie between two touching parts at the same depth.
-GROUP_PRIORITY = {HEAD: 5, RARM: 4, LARM: 4, BODY: 3, RLEG: 2, LLEG: 2}
+GROUP_PRIORITY = {HEAD: 5, RARM: 4, LARM: 4, BODY: 3, RLEG: 2, LLEG: 2,
+                  H_HEAD: 2, H_TACK: 2, H_BODY: 1, H_FRONT: 1, H_HIND: 1, H_TAIL: 1}
+
+# box face -> (origin corner, U edge, V edge, outward normal); textures run along U (columns)
+# and V (rows), the way Minecraft lays out a box's UV island
+FACE_NAMES = ("front", "back", "right", "left", "top", "bottom")
+
+
+def face_frame(name: str, lo, size):
+    x0, y0, z0 = lo
+    w, h, d = size
+    if name == "front":
+        return (x0, y0 + h, z0 + d), (w, 0, 0), (0, -h, 0), (0, 0, 1)
+    if name == "back":
+        return (x0 + w, y0 + h, z0), (-w, 0, 0), (0, -h, 0), (0, 0, -1)
+    if name == "right":
+        return (x0, y0 + h, z0), (0, 0, d), (0, -h, 0), (-1, 0, 0)
+    if name == "left":
+        return (x0 + w, y0 + h, z0 + d), (0, 0, -d), (0, -h, 0), (1, 0, 0)
+    if name == "top":
+        return (x0, y0 + h, z0), (w, 0, 0), (0, 0, d), (0, 1, 0)
+    return (x0, y0, z0), (w, 0, 0), (0, 0, d), (0, -1, 0)
 
 
 @dataclass(frozen=True)

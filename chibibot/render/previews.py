@@ -10,7 +10,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from . import encode
 from .engine import FPS, RenderError, render
-from .options import ANIMATIONS, BODIES, BUSTS, CAMERAS, POSES, STYLES, Opt, RenderSettings
+from .options import (BODIES, BUSTS, CAMERAS, COATS, HORSE_SIZES, MARKED_COATS, MARKS, MOUNTS, POSES, RIDER_POSES,
+                      STYLES, TACKS, Opt, RenderSettings, anim_options)
 from .options import opt as _opt
 from .skin import Skin
 
@@ -200,6 +201,9 @@ def animated_sheet(skin: Skin, variants: list[tuple[str, RenderSettings]], cols:
 
 # ------------------------------------------------------------------ per-step examples
 
+MAX_RESULT_TILES = 16
+
+
 def opt_anim(key: str) -> Opt:
     return _opt("anim", key)
 
@@ -226,8 +230,27 @@ def step_example(skin: Skin, s: RenderSettings, step: str, size: int = 100) -> t
             variants.append((lab, base.copy(body=o.key)))
         return "photo", static_sheet(skin, variants, 3, 2, _index(BODIES, s.body)), "body.png"
     if step == "pose":
-        variants = [(label_of(o), base.copy(pose=o.key)) for o in POSES]
-        return "photo", static_sheet(skin, variants, 5, 2, _index(POSES, s.pose)), "pose.png"
+        opts = RIDER_POSES if s.mount == "ride" else POSES
+        variants = [(label_of(o), base.copy(pose=o.key)) for o in opts]
+        cols = 4 if s.mount == "ride" else 5
+        return "photo", static_sheet(skin, variants, cols, 2, _index(opts, s.pose)), "pose.png"
+    if step == "mount":
+        variants = [(label_of(o), base.copy(mount=o.key)) for o in MOUNTS]
+        return "photo", static_sheet(skin, variants, 3, 2, _index(MOUNTS, s.mount)), "mount.png"
+    if step == "horse":
+        variants = [(label_of(o), base.copy(horse=o.key, horses=[o.key])) for o in COATS]
+        picked = {i for i, o in enumerate(COATS) if o.key in s.horses}
+        return "photo", static_sheet(skin, variants, 4, 2, picked), "coats.png"
+    if step == "marks":
+        coat = next((c for c in s.horses if c in MARKED_COATS), "chestnut")
+        variants = [(label_of(o), base.copy(marks=o.key, horse=coat, horses=[coat])) for o in MARKS]
+        return "photo", static_sheet(skin, variants, 3, 2, _index(MARKS, s.marks)), "marks.png"
+    if step == "tack":
+        variants = [(label_of(o), base.copy(tack=o.key)) for o in TACKS]
+        return "photo", static_sheet(skin, variants, 4, 2, _index(TACKS, s.tack)), "tack.png"
+    if step == "hsize":
+        variants = [(label_of(o), base.copy(hsize=o.key)) for o in HORSE_SIZES]
+        return "photo", static_sheet(skin, variants, 3, 2, _index(HORSE_SIZES, s.hsize)), "size.png"
     if step == "bust":
         variants = [(label_of(o), base.copy(bust=o.key)) for o in BUSTS]
         return "photo", static_sheet(skin, variants, 4, 2, _index(BUSTS, s.bust)), "bust.png"
@@ -241,9 +264,10 @@ def step_example(skin: Skin, s: RenderSettings, step: str, size: int = 100) -> t
             return "animation", data, name
         return "photo", static_sheet(skin, variants, 5, 2, _index(CAMERAS, s.cam)), "cam.png"
     if step == "anim":
-        variants = [(label_of(o), s.copy(anim=o.key, mode="pixel")) for o in ANIMATIONS]
-        picked = {i for i, o in enumerate(ANIMATIONS) if o.key in s.anims}
-        data, name = animated_sheet(skin, variants, 5, 2, picked)
+        opts = anim_options(s.mount)
+        variants = [(label_of(o), s.copy(anim=o.key, mode="pixel")) for o in opts]
+        picked = {i for i, o in enumerate(opts) if o.key in s.anims}
+        data, name = animated_sheet(skin, variants, 5 if len(opts) > 12 else 4, 2, picked)
         return "animation", data, name
     return result_preview(skin, s, size)
 
@@ -253,16 +277,29 @@ def result_preview(skin: Skin, s: RenderSettings, size: int = 100) -> tuple[str,
 
     With several variants picked (e.g. static + walk + dance) it shows all of them side by side.
     """
-    if len(s.anims) > 1:
-        variants = [(label_of(opt_anim(a)), s.variant(a)) for a in s.anims]
+    if len(s.anims) > 1 or len(s.coats) > 1:
+        variants = []
+        for h in s.coats:
+            for a in s.anims:
+                names = []
+                if len(s.coats) > 1:
+                    names.append(label_of(_opt("horse", h)))
+                if len(s.anims) > 1:
+                    names.append(label_of(opt_anim(a)))
+                variants.append((" · ".join(names), s.variant(a, h)))
+        title = None
+        if len(variants) > MAX_RESULT_TILES:
+            title = f"Первые {MAX_RESULT_TILES} из {len(variants)}" if cyrillic_ok() else \
+                f"First {MAX_RESULT_TILES} of {len(variants)}"
+            variants = variants[:MAX_RESULT_TILES]
         if len(variants) > 8:
             # a big sheet in smooth mode takes ~20 s; pixel mode shows the motion just as well
             variants = [(lab, v.copy(mode="pixel")) for lab, v in variants]
         cols = min(4, len(variants))
-        if s.any_animated:
-            data, name = animated_sheet(skin, variants, cols, 2, None)
+        if any(v.animated for _, v in variants):
+            data, name = animated_sheet(skin, variants, cols, 2, None, title)
             return "animation", data, name
-        return "photo", static_sheet(skin, variants, cols, 2, None), "variants.png"
+        return "photo", static_sheet(skin, variants, cols, 2, None, title), "variants.png"
     res = render(skin, s, size)
     scale = max(1, 400 // size)
     side = size * scale
@@ -292,3 +329,20 @@ def overview_sheet(thumbs: list[tuple[str, bytes | None, bool]], title: str | No
                 frame = None
         sh.paste(im, i, frame, badge=animated)
     return _png(im)
+
+
+def news_example(skin: Skin) -> tuple[bytes, str]:
+    """The animated example for the horses announcement (/news)."""
+    base = RenderSettings(mode="hd")
+
+    def v(anim: str, **kw) -> RenderSettings:
+        coat = kw.get("horse", "chestnut")
+        return base.copy(anim=anim, anims=[anim], horses=[coat], **kw)
+
+    variants = [
+        ("Галопом", v("hgallop", mount="ride", horse="chestnut")),
+        ("На дыбы", v("hrear", mount="ride", horse="black", tack="diamond")),
+        ("Брыкается", v("hbuck", mount="solo", horse="brown", marks="whitefield", tack="none")),
+        ("Щиплет траву", v("heat", mount="solo", horse="donkey", tack="chest")),
+    ]
+    return animated_sheet(skin, variants, 4, 2, None)

@@ -24,6 +24,11 @@ themselves in Telegram.
   render mode (smooth by default, or crisp pixel art), outline, animation speed, and the emoji the item is linked to.
 - 🎞 **Several animations at once**: tick any number of variants (static pose included) and every skin becomes
   one emoji/sticker per variant — e.g. 3 skins × «static + walk + dance» = 9 items in one go.
+- 🐴 **Horses**: put the chibi in the saddle or make horses without a rider (no skin needed) — 11 coats
+  (seven horse colours, donkey, mule, skeleton and zombie horse), markings, saddle, chests or leather / iron /
+  gold / diamond armour, three sizes (foal, normal, big) and 11 horse animations (walk, trot, gallop, rearing,
+  jump, grazing, mane shake, bucking, hello, spin…). Several coats can be ticked at once, like animations.
+  The rider keeps any arm pose and turns to face the camera.
 - 🕶 Second-layer pixels with partial transparency (tinted glasses, visors) are blended like in the game.
 - 🖼 Every step shows a preview sheet drawn with **your own** skin (an animated grid for animations).
 - ⚡ After picking the style and body type you can hit «✅ Создать» (Create) right away or keep tuning.
@@ -37,6 +42,8 @@ themselves in Telegram.
   «🔥 Fresh packs» — a carousel of the players' packs that grew the most lately.
 
 <p align="center"><img src="docs/poses.png" alt="10 poses" width="90%"></p>
+
+<p align="center"><img src="docs/horses.png" alt="Riders and horses: coats, markings, tack, sizes" width="90%"></p>
 
 ## 😀 Emoji packs and 🖼 sticker packs
 
@@ -107,6 +114,7 @@ to its log on startup — send it to the bot.
 | `/stats` | charts: activity, new users, items made, total users and items — for 24 h / week / month / year / all time |
 | `/fresh` | the players' packs that grew the most in the last 24 h / week / month, with a preview sheet and links |
 | `/alert [hours] [text]` | tell everyone who wrote to the bot recently that it works again |
+| `/news` | the horses announcement with an animated example: shown to you first, sent to all users only on «📣 Отправить всем» |
 
 Both dashboards are also in the admin menu (📊 Статистика, 🔥 Свежие паки). The charts are drawn by the bot itself
 (Pillow, no plotting library); activity is counted per user per hour, and the bot rebuilds the history it can from
@@ -205,6 +213,7 @@ chibibot/
     skin.py             skin loading: HD, legacy 64×32, Alex detection
     model.py            Classic and Minecraft Live models (boxes, UVs, proportions)
     pose.py             10 poses and 25 animations
+    horse.py            horses: model in three sizes, painted coats and tack, gaits, the rider in the saddle
     engine.py           cameras, z-buffer, shading, outlines, scale fitting for 100 and 512 px
     encode.py           PNG, VP9 WEBM with alpha, MP4 previews (frames are streamed into ffmpeg)
     previews.py         labelled preview sheets
@@ -215,7 +224,7 @@ chibibot/
   db.py                 SQLite: users, packs, items, audit log, quotas, activity
   stats.py              statistics: periods, buckets, running totals, summary
   jobs.py               render process pool that survives a crashed process
-  tg/                   handlers: menu, packs, wizard, conversion, admin, statistics, quick add
+  tg/                   handlers: menu, packs, wizard, conversion, admin, statistics, news, quick add
 tests/                  smoke test and server checks
 docs/                   images for this README
 ```

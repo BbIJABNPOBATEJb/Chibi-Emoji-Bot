@@ -21,14 +21,16 @@ from ..db import Pack, User
 from ..jobs import WorkerCrashed, job_emoji, job_result, job_step
 from ..render.encode import EncodeError
 from ..render.engine import RenderError
-from ..render.options import (ANIMATIONS, BODIES, BUSTS, CAMERAS, OUTLINES, PARTS, POSES, QUICK_EMOJI,
-                              RENDER_MODES, SPEEDS, STYLES, RenderSettings, opt)
+from ..render.options import (BODIES, BUSTS, CAMERAS, COATS, FROM_HORSE, HORSE_SIZES, MARKED_COATS, MARKS, MOUNTS,
+                              OUTLINES, PARTS, POSES, QUICK_EMOJI, RENDER_MODES, RIDER_POSES, SPEEDS, STYLES, TACKS,
+                              TO_HORSE, RenderSettings, anim_options, opt)
+from ..render.skin import default_skin
 from ..sources import Collected, SkinItem, collect_file, collect_names, parse_names
 from ..kinds import kind_of
 from ..stickers import StickerError
 from .app import App
 from .media import set_caption, show_media
-from .ui import Menu, PackCB, Wiz, btn, chunks, esc, kb, safe_delete, skin_word
+from .ui import Menu, PackCB, Wiz, btn, chunks, esc, kb, plural, safe_delete, skin_word
 from .uploader import Item, render_and_upload, why
 
 log = logging.getLogger(__name__)
@@ -42,16 +44,41 @@ class W(StatesGroup):
     config = State()
 
 
-OPTION_STEPS = {
-    "style": STYLES, "body": BODIES, "pose": POSES, "bust": BUSTS, "anim": ANIMATIONS, "cam": CAMERAS,
-}
-COLS = {"style": 2, "body": 3, "pose": 2, "bust": 2, "anim": 3, "cam": 2}
-ADVANCED = ["pose", "bust", "anim", "cam", "parts", "extra"]
+OPTION_STEPS = {"style", "body", "pose", "bust", "anim", "cam", "mount", "horse", "marks", "tack", "hsize"}
+COLS = {"style": 2, "body": 3, "pose": 2, "bust": 2, "anim": 3, "cam": 2,
+        "mount": 3, "horse": 3, "marks": 2, "tack": 2, "hsize": 3}
+HORSE_STEPS = ["mount", "horse", "marks", "tack", "hsize"]
+ADVANCED = HORSE_STEPS + ["pose", "bust", "anim", "cam", "parts", "extra"]
+MULTI = {"anim": "anims", "horse": "horses"}   # steps where several options can be ticked at once
 SECTION_BUTTONS = [
     ("🎨 Стиль", "style"), ("🧍 Тело", "body"), ("🤸 Поза", "pose"),
     ("🖼 Кадр", "bust"), ("🎬 Анимация", "anim"), ("📷 Камера", "cam"),
-    ("👁 Части", "parts"), ("⚙️ Вид", "extra"),
+    ("🐴 Лошадь", "mount"), ("👁 Части", "parts"), ("⚙️ Вид", "extra"),
 ]
+HORSE_LABEL = "Лошадка"
+
+
+def step_opts(step: str, s: RenderSettings) -> list:
+    """The options of a step; some depend on the horse settings."""
+    if step == "pose":
+        return RIDER_POSES if s.mount == "ride" else POSES
+    if step == "anim":
+        return anim_options(s.mount)
+    return {"style": STYLES, "body": BODIES, "bust": BUSTS, "cam": CAMERAS, "mount": MOUNTS, "horse": COATS,
+            "marks": MARKS, "tack": TACKS, "hsize": HORSE_SIZES}[step]
+
+
+def applies(step: str, s: RenderSettings) -> bool:
+    """Whether a step means anything with the current settings."""
+    if step in ("horse", "marks", "tack", "hsize") and s.mount == "none":
+        return False
+    if step == "marks" and not any(c in MARKED_COATS for c in s.horses):
+        return False
+    if step in ("body", "pose", "parts") and s.mount == "solo":
+        return False
+    if step == "bust" and s.mount != "none":
+        return False
+    return True
 
 STEP_TEXT = {
     "style": ("🎨 <b>Стиль</b>\n"
@@ -69,6 +96,22 @@ STEP_TEXT = {
              "Отметьте <b>одну или несколько</b> — каждый скин станет отдельной картинкой на каждый вариант. "
              "«Без анимации» — статичная картинка с выбранной позой, остальные — видео до 3 секунд.\n"
              "«Крадётся», «Ползёт», «Галоп» и «Бросок» ставят фигурку на четвереньки."),
+    "anim_horse": ("🎬 <b>Анимации с лошадью</b>\n"
+                   "Отметьте <b>одну или несколько</b>: шагом, рысью, галопом, на дыбы, прыжок, щиплет траву, "
+                   "брыкается, «Привет» (наездник машет, лошадь бьёт копытом) и другие. "
+                   "«Без анимации» — статичная картинка."),
+    "mount": ("🐴 <b>Лошадь</b>\n"
+              "• <b>Верхом</b> — ваш чиби в седле.\n"
+              "• <b>Только лошадь</b> — лошадка без наездника, скин не нужен.\n"
+              "Дальше выберете масть, отметины, снаряжение и размер."),
+    "horse": ("🎨 <b>Масть</b>\n"
+              "Отметьте <b>одну или несколько</b> — на каждую масть получится отдельная картинка. "
+              "Есть ослик, мул, лошадь-скелет и лошадь-зомби."),
+    "marks": "🏷 <b>Отметины</b>\nБелые носочки, пятна или крапинки — для обычных мастей.",
+    "tack": ("🪑 <b>Снаряжение</b>\n"
+             "Седло, седло с сундуками или конская броня: кожаная, железная, золотая, алмазная."),
+    "hsize": ("📏 <b>Размер</b>\n"
+              "Жеребёнок — маленький и милый (наездник на нём огромный), обычная или большая лошадь."),
     "cam": "📷 <b>Камера</b>\nДесять ракурсов: 3/4, анфас, профили, со спины, сверху и снизу.",
     "parts": ("👁 <b>Части тела</b>\n"
               "Нажмите, чтобы скрыть или показать часть. Второй слой скина (шляпа, куртка, рукава, штанины) "
@@ -103,26 +146,45 @@ def summary(s: RenderSettings, first_slim: bool | None) -> str:
     body = opt("body", s.body).ru
     if s.body == "auto" and first_slim is not None:
         body += f" ({'Алекс' if first_slim else 'Стив'} у первого скина)"
-    lines = [f"🎨 Стиль: <b>{opt('style', s.style).ru}</b>", f"🧍 Тело: <b>{body}</b>"]
+    lines = [f"🎨 Стиль: <b>{opt('style', s.style).ru}</b>"]
+    if s.mount != "solo":
+        lines.append(f"🧍 Тело: <b>{body}</b>")
+    if s.mount != "none":
+        coats = ", ".join(opt("horse", c).ru for c in s.horses)
+        extra = [opt("tack", s.tack).ru.lower(), opt("hsize", s.hsize).ru.lower()]
+        if s.marks != "none" and any(c in MARKED_COATS for c in s.horses):
+            extra.insert(0, opt("marks", s.marks).ru.lower())
+        lines.append(f"🐴 {opt('mount', s.mount).ru}: <b>{coats}</b> ({', '.join(extra)})")
     if len(s.anims) > 1:
         names = ", ".join(opt("anim", a).ru for a in s.anims)
         lines.append(f"🎬 Варианты ({len(s.anims)} на скин): <b>{names}</b>")
-        if "none" in s.anims:
-            lines.append(f"🤸 Поза статичного: <b>{opt('pose', s.pose).ru}</b>")
+        if "none" in s.anims and s.mount != "solo":
+            lines.append(f"🤸 Поза статичного: <b>{_pose_name(s)}</b>")
     elif s.animated:
         lines.append(f"🎬 Анимация: <b>{opt('anim', s.anim).ru}</b>")
+    elif s.mount == "solo":
+        lines.append("🎬 Статичная картинка")
     else:
-        lines.append(f"🤸 Поза: <b>{opt('pose', s.pose).ru}</b> · статичный")
+        lines.append(f"🤸 Поза: <b>{_pose_name(s)}</b> · статичный")
     if s.any_animated:
         lines[-1] += f" · скорость {opt('speed', s.speed).ru}"
+    if s.mount == "none":
+        lines.append(f"🖼 Кадр: <b>{opt('bust', s.bust).ru}</b>")
+    lines.append(f"📷 Камера: <b>{opt('cam', s.cam).ru}</b>")
+    if s.mount != "solo":
+        lines.append(f"👁 Части: <b>{_hidden_text(s)}</b>")
     lines += [
-        f"🖼 Кадр: <b>{opt('bust', s.bust).ru}</b>",
-        f"📷 Камера: <b>{opt('cam', s.cam).ru}</b>",
-        f"👁 Части: <b>{_hidden_text(s)}</b>",
         f"⚙️ Вид: <b>{opt('mode', s.mode).ru}</b>, обводка: <b>{opt('outline', s.outline).ru.lower()}</b>, "
         f"привязка {s.emoji}",
     ]
     return "\n".join(lines)
+
+
+def _pose_name(s: RenderSettings) -> str:
+    for o in step_opts("pose", s):
+        if o.key == s.pose:
+            return o.ru
+    return opt("pose", s.pose).ru
 
 
 async def _pack(app: App, data: dict) -> Pack | None:
@@ -136,8 +198,30 @@ def _make_label(data: dict) -> str:
 
 
 def _total(data: dict) -> int:
-    """How many emojis/stickers "Create" will make: every skin times every picked variant."""
-    return len(_items(data)) * len(_settings(data).anims)
+    """How many emojis/stickers "Create" will make: every skin times every picked variant (and coat)."""
+    return len(plan_variants(_items(data), _settings(data)))
+
+
+def plan_variants(items: list[dict], s: RenderSettings) -> list[tuple[str, dict, RenderSettings]]:
+    """(label, queue item, settings) for every picture to make, grouped by skin, then coat, then variant.
+
+    A lone horse needs no skin: it is made once per coat and variant, whatever is in the queue.
+    """
+    if not items:
+        return []
+    if s.mount == "solo":
+        items = items[:1]
+    out = []
+    for it in items:
+        for h in s.coats:
+            for a in s.anims:
+                names = [] if s.mount == "solo" else [it["label"]]
+                if h is not None and (len(s.coats) > 1 or s.mount == "solo"):
+                    names.append(opt("horse", h).ru)
+                if len(s.anims) > 1:
+                    names.append(opt("anim", a).ru)
+                out.append((" · ".join(names) or HORSE_LABEL, it, s.variant(a, h)))
+    return out
 
 
 @dataclass
@@ -174,6 +258,7 @@ def collect_text(pack: Pack, data: dict, room: Room) -> str:
         "• <b>PNG-скины файлом</b> (📎 → Файл, без сжатия);",
         "• <b>ZIP-архив</b> со скинами (и/или .txt со списком ников).",
         "Можно несколькими сообщениями.",
+        "🐴 Нужны лошадки без наездника? Нажмите «Только лошадки» — скин не нужен.",
         "",
         limits + ".",
     ]
@@ -195,6 +280,7 @@ def collect_kb(data: dict):
     if n:
         rows.append([btn(f"➡️ Далее: настройка ({n})", Wiz(act="go"))])
         rows.append([btn("🧹 Очистить очередь", Wiz(act="clear"))])
+    rows.append([btn("🐴 Только лошадки (без скина)", Wiz(act="horses"))])
     rows.append([btn("❌ Отмена", Wiz(act="cancel"))])
     return kb(*rows)
 
@@ -414,6 +500,27 @@ async def cb_go(cq: CallbackQuery, state: FSMContext, bot: Bot, app: App, me: Us
         await render_board(bot, app, state, cq.message.chat.id)
 
 
+@router.callback_query(W.collect, Wiz.filter(F.act == "horses"))
+async def cb_horses_only(cq: CallbackQuery, state: FSMContext, bot: Bot, app: App, me: User):
+    """Horses without a rider: no skin needed, straight to the coats."""
+    if app.lock(me.id).locked():
+        await cq.answer("⏳ Ещё загружаю скины…")
+        return
+    async with app.lock(me.id):
+        data = await state.get_data()
+        items = _items(data)
+        if not items:
+            sha1 = app.store.save(default_skin())
+            items = [SkinItem(HORSE_LABEL, "horse", sha1, False).__dict__]
+        s = _settings(data)
+        set_mount(s, "solo")
+        await cq.answer()
+        await state.set_state(W.config)
+        await state.update_data(items=items, s=s.to_dict(), step="horse", hist=[], ret="next", board=None)
+        await safe_delete(cq.message)
+        await render_board(bot, app, state, cq.message.chat.id)
+
+
 # ------------------------------------------------------------------ the board
 
 def _media_key(step: str, first: dict, s: RenderSettings, size: int) -> str:
@@ -428,19 +535,26 @@ def board_caption(step: str, s: RenderSettings, data: dict, pack: Pack | None, c
     head = f"{kind_of(data.get('kind')).icon} «{esc(pack.title if pack else '?')}»"
     if data.get("replace"):
         head += f" · перерисовка «{esc(first['label'])}»"
+    elif s.mount == "solo":
+        head += " · лошадки без наездника"
     else:
         head += f" · в очереди {skin_word(len(items))}"
     if step == "hub":
         body = "✨ <b>Итог</b>\n" + summary(s, first.get("slim"))
-        if not data.get("replace") and len(s.anims) > 1:
-            body += (f"\n\n📦 Всего получится: <b>{skin_word(len(items))} × {len(s.anims)} = "
+        if not data.get("replace") and (len(s.anims) > 1 or len(s.coats) > 1 or s.mount == "solo"):
+            factors = [] if s.mount == "solo" else [skin_word(len(items))]
+            if len(s.coats) > 1 or s.mount == "solo":
+                factors.append(f"{len(s.coats)} {plural(len(s.coats), 'масть', 'масти', 'мастей')}")
+            if len(s.anims) > 1:
+                factors.append(f"{len(s.anims)} вар.")
+            body += (f"\n\n📦 Всего получится: <b>{' × '.join(factors)} = "
                      f"{kind_of(data.get('kind')).count(_total(data))}</b>")
         if capacity is not None and capacity < _total(data):
             body += (f"\n⚠️ Сейчас влезет только {capacity} — остальное упрётся в лимит пака "
                      "или дневную квоту.")
-        body += "\n\nМожно создавать или донастроить позу, кадр, анимацию, камеру и части тела."
+        body += "\n\nМожно создавать или донастроить лошадь, позу, кадр, анимацию, камеру и части тела."
     else:
-        body = STEP_TEXT[step]
+        body = STEP_TEXT["anim_horse" if step == "anim" and s.mount != "none" else step]
         if step in ("parts", "extra"):
             body += "\n\n" + summary(s, first.get("slim"))
     foot = f"Превью на скине: <b>{esc(first['label'])}</b>"
@@ -454,7 +568,10 @@ def _nav(data: dict, step: str) -> list[list]:
     back = btn("⬅️ Назад", Wiz(act="back"))
     if step != "hub":
         if data.get("ret") == "hub":
-            rows.append([back, btn("↩️ К итогу", Wiz(act="step", val="hub"))])
+            row = [back]
+            if _next_step(step, data) != "hub":  # the horse settings come as a short chain
+                row.append(btn("Далее ➡️", Wiz(act="next")))
+            rows.append(row + [btn("↩️ К итогу", Wiz(act="step", val="hub"))])
         else:
             rows.append([back, btn("Далее ➡️", Wiz(act="next"))])
     rows.append([btn(_make_label(data), Wiz(act="make"))])
@@ -466,11 +583,11 @@ def board_kb(step: str, s: RenderSettings, data: dict):
     rows: list[list] = []
     if step in OPTION_STEPS:
         current = getattr(s, step)
-        multi = step == "anim" and not data.get("replace")
-        opts = OPTION_STEPS[step]
+        multi = step in MULTI and not data.get("replace")
+        opts = step_opts(step, s)
         buttons = []
         for i, o in enumerate(opts):
-            chosen = o.key in s.anims if multi else o.key == current
+            chosen = o.key in getattr(s, MULTI[step]) if multi else o.key == current
             mark = "✅ " if chosen else ("▫️ " if multi else "")
             buttons.append(btn(f"{mark}{i + 1}. {o.ru}", Wiz(act="set", val=f"{step}|{o.key}")))
         if step == "anim":
@@ -480,6 +597,9 @@ def board_kb(step: str, s: RenderSettings, data: dict):
             rows.append([buttons[0]])
             rows += chunks(buttons[1:], COLS[step])
         else:
+            if step == "horse" and multi:
+                rows.append([btn("🎨 Все масти", Wiz(act="coats", val="all")),
+                             btn("↺ Только одна", Wiz(act="coats", val="one"))])
             rows += chunks(buttons, COLS[step])
     elif step == "parts":
         hidden = set(s.hidden)
@@ -500,10 +620,10 @@ def board_kb(step: str, s: RenderSettings, data: dict):
     elif step == "hub":
         rows.append([btn(_make_label(data), Wiz(act="make"))])
         if not data.get("replace"):
-            rows.append([btn("⚙️ Настроить дальше: поза, анимация, камера…", Wiz(act="adv"))])
+            rows.append([btn("⚙️ Настроить дальше: лошадь, поза, анимация…", Wiz(act="adv"))])
         else:
             rows.append([btn("⚙️ Пошаговая настройка", Wiz(act="adv"))])
-        sec = [btn(t, Wiz(act="step", val=k)) for t, k in SECTION_BUTTONS]
+        sec = [btn(t, Wiz(act="step", val=k)) for t, k in SECTION_BUTTONS if k == "mount" or applies(k, s)]
         rows += chunks(sec, 3)
         last = [btn("❌ Отмена", Wiz(act="cancel"))]
         if data.get("hist"):
@@ -592,16 +712,25 @@ async def _guard(cq: CallbackQuery, state: FSMContext, app: App, me: User) -> di
     return data
 
 
+def _after(step: str, chain: list[str], s: RenderSettings) -> str:
+    """The next step in the chain that means something now, or the summary."""
+    for nxt in chain[chain.index(step) + 1:]:
+        if applies(nxt, s):
+            return nxt
+    return "hub"
+
+
 def _next_step(step: str, data: dict) -> str:
+    s = _settings(data)
     if data.get("ret") == "hub":
+        # from the summary, «🐴 Лошадь» walks through all the horse settings and comes back
+        if step in HORSE_STEPS and s.mount != "none":
+            return _after(step, HORSE_STEPS, s)
         return "hub"
-    if step == "style":
-        return "body"
-    if step == "body":
-        return "hub"
+    if step in ("style", "body"):
+        return _after(step, ["style", "body"], s)
     if step in ADVANCED:
-        i = ADVANCED.index(step)
-        return ADVANCED[i + 1] if i + 1 < len(ADVANCED) else "hub"
+        return _after(step, ADVANCED, s)
     return "hub"
 
 
@@ -630,21 +759,27 @@ async def cb_set(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot: 
         return
     group, _, key = callback_data.val.partition("|")
     s = _settings(data)
-    multi = group == "anim" and not data.get("replace")
+    multi = group in MULTI and not data.get("replace")
     if group == "emoji":
         s.emoji = key
     elif multi:
-        # tick/untick one variant; at least one always stays picked
-        picked = set(s.anims) ^ {key}
+        # tick/untick one variant or coat; at least one always stays picked
+        field = MULTI[group]
+        picked = set(getattr(s, field)) ^ {key}
         if not picked:
             await cq.answer("Хотя бы один вариант должен остаться.", show_alert=True)
             return
-        s.anims = [o.key for o in ANIMATIONS if o.key in picked]
-        s.anim = key if key in picked else s.anims[0]
-    elif group in ("style", "body", "pose", "bust", "anim", "cam", "mode", "outline", "speed"):
+        setattr(s, field, [o.key for o in step_opts(group, s) if o.key in picked])
+        setattr(s, group, key if key in picked else getattr(s, field)[0])
+    elif group == "mount":
+        set_mount(s, key)
+    elif group in ("style", "body", "pose", "bust", "anim", "cam", "mode", "outline", "speed",
+                   "horse", "marks", "tack", "hsize"):
         setattr(s, group, key)
         if group == "anim":  # redrawing one item: a single variant
             s.anims = [key]
+        if group == "horse":
+            s.horses = [key]
         if group == "pose":
             # a pose is what the static variant shows, so make sure there is one
             if data.get("replace"):
@@ -656,11 +791,25 @@ async def cb_set(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot: 
         await cq.answer()
         return
     await state.update_data(s=RenderSettings.from_dict(s.to_dict()).to_dict())
+    data = await state.get_data()
     step = data.get("step")
     if step in OPTION_STEPS and not multi:
         await _go(cq, state, bot, app, me, _next_step(step, data))
     else:
         await _go(cq, state, bot, app, me, step, push=False)
+
+
+def set_mount(s: RenderSettings, key: str) -> None:
+    """Switch the horse on/off; the picked animations move to their closest counterparts."""
+    was_horse, horse = s.mount != "none", key != "none"
+    s.mount = key
+    if was_horse != horse:
+        table = TO_HORSE if horse else FROM_HORSE
+        moved = [table.get(a, "none") for a in s.anims]
+        s.anims = list(dict.fromkeys(moved))
+        s.anim = table.get(s.anim, "none")
+    if key == "ride" and s.pose not in {o.key for o in RIDER_POSES}:
+        s.pose = "stand"
 
 
 @router.callback_query(W.config, Wiz.filter(F.act == "anims"))
@@ -675,12 +824,26 @@ async def cb_anims_bulk(cq: CallbackQuery, callback_data: Wiz, state: FSMContext
     s = _settings(data)
     if callback_data.val == "all":
         keep_static = "none" in s.anims
-        s.anims = [o.key for o in ANIMATIONS if o.key != "none" or keep_static]
+        s.anims = [o.key for o in anim_options(s.mount) if o.key != "none" or keep_static]
         s.anim = s.anims[0]
     else:
         s.anims, s.anim = ["none"], "none"
     await state.update_data(s=s.to_dict())
     await _go(cq, state, bot, app, me, "anim", push=False)
+
+
+@router.callback_query(W.config, Wiz.filter(F.act == "coats"))
+async def cb_coats_bulk(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot: Bot, app: App, me: User):
+    """«Все масти» ticks every coat; «Только одна» keeps the current one."""
+    data = await _guard(cq, state, app, me)
+    if data is None or data.get("replace"):
+        if data is not None:
+            await cq.answer()
+        return
+    s = _settings(data)
+    s.horses = [o.key for o in COATS] if callback_data.val == "all" else [s.horse]
+    await state.update_data(s=s.to_dict())
+    await _go(cq, state, bot, app, me, "horse", push=False)
 
 
 @router.callback_query(W.config, Wiz.filter(F.act == "part"))
@@ -723,7 +886,7 @@ async def cb_adv(cq: CallbackQuery, state: FSMContext, bot: Bot, app: App, me: U
     data = await _guard(cq, state, app, me)
     if data is None:
         return
-    await _go(cq, state, bot, app, me, "pose", ret="next")
+    await _go(cq, state, bot, app, me, ADVANCED[0], ret="next")
 
 
 @router.callback_query(W.config, Wiz.filter(F.act == "step"))
@@ -734,6 +897,9 @@ async def cb_step(cq: CallbackQuery, callback_data: Wiz, state: FSMContext, bot:
     step = callback_data.val
     if step not in OPTION_STEPS and step not in ("parts", "extra", "hub"):
         await cq.answer()
+        return
+    if step != "hub" and not applies(step, _settings(data)):
+        await cq.answer("С текущими настройками этот шаг не нужен.", show_alert=True)
         return
     await _go(cq, state, bot, app, me, step, ret="hub")
 
@@ -872,12 +1038,11 @@ async def _do_create(cq: CallbackQuery, bot: Bot, app: App, me: User, admin: boo
             await set_caption(bot, chat_id, board, "⚠️ Не получилось")
             await bot.send_message(chat_id, reason, reply_markup=_done_kb(pack))
             return
-        # every skin × every picked variant, grouped by skin: Notch-idle, Notch-walk, jeb_-idle, …
-        many = len(s.anims) > 1
+        # every skin × every coat × every picked variant, grouped by skin: Notch-idle, Notch-walk, jeb_-idle, …
         planned = [
-            Item(f"{it['label']} · {opt('anim', a).ru}" if many else it["label"], it["source"], it["sha1"],
-                 it.get("slim"), s.variant(a).to_dict(), s.emoji, keyword=it["label"])
-            for it in items for a in s.anims
+            Item(label, it["source"], it["sha1"], it.get("slim"), v.to_dict(), s.emoji,
+                 keyword=HORSE_LABEL if s.mount == "solo" else it["label"])
+            for label, it, v in plan_variants(items, s)
         ]
         q = await app.quota(me.id, admin)
         room = max(0, pack.k.max_items - pack.count)

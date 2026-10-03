@@ -396,6 +396,9 @@ async def main():
     await user.click("1. Авто")
     check("Итог" in user.last()["caption"], "hub after body")
     await user.click("Настроить дальше")
+    check("Лошадь" in user.last()["caption"] and "✅ 1. Без лошади" in json.dumps(
+        user.last()["reply_markup"], ensure_ascii=False), "advanced settings start with the horse (none)")
+    await user.click("Далее")
     check("Поза" in user.last()["caption"], "pose step")
     (out / "step_pose.png").write_bytes(fake.media[user.last()["message_id"]])
     await user.click("2. Машет")
@@ -566,7 +569,7 @@ async def main():
           "three variants ticked, step stays open")
     await adm.click("К итогу")
     hub = adm.last()
-    check("2 скина × 3 = 6 эмодзи" in hub["caption"] and "Создать 6 эмодзи" in json.dumps(hub["reply_markup"], ensure_ascii=False),
+    check("2 скина × 3 вар. = 6 эмодзи" in hub["caption"] and "Создать 6 эмодзи" in json.dumps(hub["reply_markup"], ensure_ascii=False),
           "hub counts skins × variants")
     check("animation" in hub, "hub preview shows every variant (animated sheet)")
     await adm.click("Создать")
@@ -643,6 +646,66 @@ async def main():
     await adm.click("К паку")
     await adm.click("Обзор")
     check(True, "sticker overview sent")
+
+    print("== horses: a rider on two coats, then horses without a skin (admin)")
+    await adm.text("/new")
+    await adm.click("🖼 Стикер-пак")
+    await adm.text("Лошадки")
+    await adm.text("Grian")
+    await adm.click("Далее: настройка")
+    await adm.click("1. Классика")
+    await adm.click("1. Авто")
+    await adm.click("🐴 Лошадь")
+    check("Верхом" in adm.last()["caption"] and "photo" in adm.last(), "horse step with an example sheet")
+    await adm.click("2. Верхом")
+    check("Масть" in adm.last()["caption"], "riding leads on to the coats")
+    await adm.click("4. Коричневая")
+    btns = [b["text"] for row in adm.last()["reply_markup"]["inline_keyboard"] for b in row]
+    check("✅ 3. Рыжая" in btns and "✅ 4. Коричневая" in btns, "several coats can be ticked")
+    await adm.click("Далее")
+    check("Отметины" in adm.last()["caption"], "then the markings")
+    await adm.click("2. Носочки и проточина")
+    check("Снаряжение" in adm.last()["caption"], "then the tack")
+    await adm.click("5. Железная броня")
+    check("Размер" in adm.last()["caption"], "then the size")
+    await adm.click("2. Обычная")
+    cap = adm.last()["caption"]
+    check("Итог" in cap and "Верхом: <b>Рыжая, Коричневая</b>" in cap, "back at the summary with the horse")
+    await adm.click("🎬 Анимация")
+    check("Анимации с лошадью" in adm.last()["caption"], "horse animations offered")
+    await pick_anims(adm, {"Без анимации", "Галопом"})
+    await adm.click("К итогу")
+    check("Создать 4 стикера" in json.dumps(adm.last()["reply_markup"], ensure_ascii=False),
+          "1 skin × 2 coats × 2 variants = 4")
+    (out / "horse_hub.mp4").write_bytes(fake.media[adm.last()["message_id"]])
+    await adm.click("Создать")
+    hpack = next(p for p in await db.user_packs(ADMIN_ID) if p.title == "Лошадки")
+    rows_h = await db.pack_emojis(hpack.id)
+    check([e.label for e in rows_h] == ["Grian · Рыжая · Без анимации", "Grian · Рыжая · Галопом",
+                                         "Grian · Коричневая · Без анимации", "Grian · Коричневая · Галопом"],
+          "one sticker per coat and variant, labelled")
+    hset = fake.sets[hpack.name]
+    check([s["fmt"] for s in hset["stickers"]] == ["static", "video", "static", "video"]
+          and all(c[2] == 512 for c in fake.checked[-4:]), "static and animated 512 px stickers")
+    check(rows_h[0].settings["mount"] == "ride" and rows_h[2].settings["horse"] == "brown"
+          and rows_h[0].settings["tack"] == "iron", "each item remembers its horse")
+    await adm.click("Добавить ещё")
+    await adm.click("Только лошадки")
+    cap = adm.last()["caption"]
+    check("Масть" in cap and "лошадки без наездника" in cap, "horses only: no skin, straight to the coats")
+    await adm.click("Все масти")
+    for _ in range(10):
+        if "Итог" in (adm.last().get("caption") or ""):
+            break
+        await adm.click("Далее")
+    await adm.click("🎬 Анимация")
+    await pick_anims(adm, {"Без анимации"})
+    await adm.click("К итогу")
+    check("Создать 11 стикеров" in json.dumps(adm.last()["reply_markup"], ensure_ascii=False), "11 coats")
+    await adm.click("Создать")
+    labels = [e.label for e in await db.pack_emojis(hpack.id)][4:]
+    check(len(labels) == 11 and labels[7] == "Ослик" and labels[-1] == "Зомби", "one horse per coat")
+    check(len(fake.sets[hpack.name]["stickers"]) == 15, "all in the Telegram set")
 
     print("== limits: publishing, daily quota, personal limits")
     used = await db.usage_since(USER_ID, "0")
@@ -748,6 +811,22 @@ async def main():
     await adm.text("/alert 5 Проверка связи")
     check("Проверка связи" in adm.last()["text"], "custom text and window")
     await adm.click("Отмена")
+
+    print("== /news: the horses announcement, sent only after the admin confirms")
+    shown = len(user.mine())
+    await user.text("/news")
+    check(len(user.mine()) == shown, "/news is ignored for regular players")
+    await adm.text("/news")
+    preview = next(m for m in reversed(adm.mine()) if "animation" in m)
+    check("Новое: лошади" in preview["caption"] and "Только лошадки" in preview["caption"],
+          "admin first sees the exact announcement with an animated example")
+    (out / "news.mp4").write_bytes(fake.media[preview["message_id"]])
+    check("Отправить всем (1)" in json.dumps(adm.last()["reply_markup"], ensure_ascii=False)
+          and len(user.mine()) == shown, "nothing is sent before the confirmation")
+    await adm.click("Отправить всем")
+    got = user.last()
+    check("animation" in got and "Новое: лошади" in got["caption"], "player received the announcement")
+    check("Новость отправлена" in adm.last()["text"] and "Доставлено: 1" in adm.last()["text"], "delivery report")
 
     print("== upload interrupted by a restart")
     from chibibot.tg import uploader

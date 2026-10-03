@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+from typing import Awaitable, Callable
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
@@ -84,11 +85,23 @@ async def cb_alert_go(cq: CallbackQuery, state: FSMContext, bot: Bot, app: App, 
     await cq.answer("Отправляю…")
     status = await cq.message.edit_text(f"📢 Отправляю оповещение: 0/{len(users)}…")
     markup = kb(btn("🏠 Меню", Menu(act="home")))
+
+    async def send(uid: int) -> None:
+        await bot.send_message(uid, text, reply_markup=markup)
+
+    sent, blocked, failed = await deliver(users, send, status, "📢 Отправляю оповещение")
+    await app.db.log(me.id, "alert", details=f"за {hours} ч: доставлено {sent}, заблокировали {blocked}, ошибок {failed}")
+    await report(cq, status, "📢 Оповещение отправлено.", sent, blocked, failed)
+
+
+async def deliver(users: list[User], send: Callable[[int], Awaitable[None]], status: Message | None,
+                  label: str) -> tuple[int, int, int]:
+    """Send one message to each user, gently; -> (sent, blocked the bot, failed)."""
     sent, blocked, failed = 0, 0, 0
     for n, u in enumerate(users, 1):
         for _ in range(3):
             try:
-                await bot.send_message(u.id, text, reply_markup=markup)
+                await send(u.id)
                 sent += 1
                 break
             except TelegramRetryAfter as exc:
@@ -97,19 +110,24 @@ async def cb_alert_go(cq: CallbackQuery, state: FSMContext, bot: Bot, app: App, 
                 blocked += 1  # blocked the bot or deleted their account
                 break
             except TelegramBadRequest as exc:
-                log.warning("alert to %s failed: %s", u.id, exc)
+                log.warning("broadcast to %s failed: %s", u.id, exc)
                 failed += 1
                 break
         await asyncio.sleep(0.05)  # stay far below Telegram's ~30 messages/second
         if n % 20 == 0 and isinstance(status, Message):
             try:
-                await status.edit_text(f"📢 Отправляю оповещение: {n}/{len(users)}…")
+                await status.edit_text(f"{label}: {n}/{len(users)}…")
             except TelegramBadRequest:
                 pass
-    await app.db.log(me.id, "alert", details=f"за {hours} ч: доставлено {sent}, заблокировали {blocked}, ошибок {failed}")
-    report = (f"📢 Оповещение отправлено.\n✅ Доставлено: {sent}\n🚫 Заблокировали бота: {blocked}"
-              + (f"\n⚠️ Ошибок: {failed}" if failed else ""))
+    return sent, blocked, failed
+
+
+async def report(cq: CallbackQuery, status: Message | bool | None, head: str, sent: int, blocked: int,
+                 failed: int) -> None:
+    markup = kb(btn("🏠 Меню", Menu(act="home")))
+    text = (f"{head}\n✅ Доставлено: {sent}\n🚫 Заблокировали бота: {blocked}"
+            + (f"\n⚠️ Ошибок: {failed}" if failed else ""))
     if isinstance(status, Message):
-        await status.edit_text(report, reply_markup=markup)
+        await status.edit_text(text, reply_markup=markup)
     else:
-        await cq.message.answer(report, reply_markup=markup)
+        await cq.message.answer(text, reply_markup=markup)

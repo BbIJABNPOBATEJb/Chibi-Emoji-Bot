@@ -79,6 +79,88 @@ ANIMATIONS = [
 # Clips that stand the figure on all fours instead of returning it to Standing.
 FOURS_ANIMATIONS = {"prowl", "crawl", "gallop", "pounce"}
 
+# ---------------------------------------------------------------- horses (see horse.py)
+
+MOUNTS = [
+    Opt("none", "Без лошади", "No horse", "🚶"),
+    Opt("ride", "Верхом", "Riding", "🏇"),
+    Opt("solo", "Только лошадь", "Horse only", "🐴"),
+]
+
+COATS = [
+    Opt("white", "Белая", "White", "🤍"),
+    Opt("creamy", "Кремовая", "Creamy", "🍦"),
+    Opt("chestnut", "Рыжая", "Chestnut", "🦊"),
+    Opt("brown", "Коричневая", "Brown", "🤎"),
+    Opt("black", "Чёрная", "Black", "🖤"),
+    Opt("gray", "Серая", "Gray", "🐘"),
+    Opt("darkbrown", "Тёмно-коричневая", "Dark Brown", "🟫"),
+    Opt("donkey", "Ослик", "Donkey", "🐴"),
+    Opt("mule", "Мул", "Mule", "🐴"),
+    Opt("skeleton", "Скелет", "Skeleton", "💀"),
+    Opt("zombie", "Зомби", "Zombie", "🧟"),
+]
+# coats that take markings (donkeys, mules and undead horses have none in the game)
+MARKED_COATS = {"white", "creamy", "chestnut", "brown", "black", "gray", "darkbrown"}
+
+MARKS = [
+    Opt("none", "Без отметин", "None", "⬜"),
+    Opt("white", "Носочки и проточина", "White socks", "🧦"),
+    Opt("whitefield", "Белые пятна", "White field", "🐄"),
+    Opt("whitedots", "Белые крапинки", "White dots", "❄️"),
+    Opt("blackdots", "Чёрные пятна", "Black dots", "⚫"),
+]
+
+TACKS = [
+    Opt("none", "Без седла", "Nothing", "🐎"),
+    Opt("saddle", "Седло", "Saddle", "🪑"),
+    Opt("chest", "Седло и сундуки", "Saddle & chests", "📦"),
+    Opt("leather", "Кожаная броня", "Leather armor", "🟤"),
+    Opt("iron", "Железная броня", "Iron armor", "⚪"),
+    Opt("gold", "Золотая броня", "Gold armor", "🟡"),
+    Opt("diamond", "Алмазная броня", "Diamond armor", "💎"),
+]
+
+HORSE_SIZES = [
+    Opt("foal", "Жеребёнок", "Foal", "🐣"),
+    Opt("normal", "Обычная", "Normal", "🐴"),
+    Opt("big", "Большая", "Big", "🏔"),
+]
+
+# what the rider does in the static picture (legs always ride)
+RIDER_POSES = [
+    Opt("stand", "Держит поводья", "Reins", "🏇"),
+    Opt("wave", "Машет", "Waving", "👋"),
+    Opt("hand", "Тянет руку", "Reaching", "🤝"),
+    Opt("zombie", "Зомби", "Zombie", "🧟"),
+    Opt("tpose", "Руки в стороны", "Arms out", "✝️"),
+    Opt("dab", "Дэб", "Dab", "😎"),
+    Opt("plead", "Умоляет", "Pleading", "🥺"),
+]
+
+HORSE_ANIMATIONS = [
+    Opt("none", "Без анимации", "None", "⏹"),
+    Opt("hidle", "Стоит", "Idle", "😌"),
+    Opt("hwalk", "Шагом", "Walk", "🚶"),
+    Opt("htrot", "Рысью", "Trot", "🐎"),
+    Opt("hgallop", "Галопом", "Gallop", "🏇"),
+    Opt("hrear", "На дыбы", "Rear", "🦄"),
+    Opt("hjump", "Прыжок", "Jump", "⤴️"),
+    Opt("heat", "Щиплет траву", "Graze", "🌿"),
+    Opt("hshake", "Трясёт гривой", "Mane shake", "💫"),
+    Opt("hbuck", "Брыкается", "Buck", "💥"),
+    Opt("hwave", "Привет", "Hello", "👋"),
+    Opt("hspin", "Кружится", "Spin", "🌀"),
+]
+HORSE_ANIM_KEYS = {o.key for o in HORSE_ANIMATIONS}
+# a player animation -> the closest horse one (when the horse is switched on), and back
+TO_HORSE = {"none": "none", "idle": "hidle", "walk": "hwalk", "run": "hgallop", "gallop": "hgallop",
+            "skip": "htrot", "jump": "hjump", "wave": "hwave", "spin": "hspin", "turn": "hspin",
+            "shake": "hshake", "cheer": "hrear", "joy": "hbuck", "bounce": "hbuck"}
+FROM_HORSE = {"none": "none", "hidle": "idle", "hwalk": "walk", "htrot": "skip", "hgallop": "run",
+              "hrear": "cheer", "hjump": "jump", "heat": "idle", "hshake": "shake", "hbuck": "joy",
+              "hwave": "wave", "hspin": "spin"}
+
 CAMERAS = [
     Opt("34r", "3/4 справа", "3/4 Right", "↗️"),
     Opt("front", "Спереди", "Front", "⬆️"),
@@ -134,12 +216,22 @@ GROUPS: dict[str, list[Opt]] = {
     "body": BODIES,
     "pose": POSES,
     "bust": BUSTS,
-    "anim": ANIMATIONS,
+    "anim": ANIMATIONS + HORSE_ANIMATIONS[1:],
     "cam": CAMERAS,
     "mode": RENDER_MODES,
     "outline": OUTLINES,
     "speed": SPEEDS,
+    "mount": MOUNTS,
+    "horse": COATS,
+    "marks": MARKS,
+    "tack": TACKS,
+    "hsize": HORSE_SIZES,
 }
+
+
+def anim_options(mount: str) -> list[Opt]:
+    """The animation list for the chosen mount: player clips on foot, horse clips with a horse."""
+    return ANIMATIONS if mount == "none" else HORSE_ANIMATIONS
 
 
 def opt(group: str, key: str) -> Opt:
@@ -165,6 +257,13 @@ class RenderSettings:
     # Every variant picked in the wizard: each skin becomes one emoji/sticker per entry
     # ("none" = the static pose). Stored per item it is always just [anim].
     anims: list[str] = field(default_factory=lambda: ["none"])
+    # horses: none | ride | solo, the coat being drawn and every coat picked, markings, tack, size
+    mount: str = "none"
+    horse: str = "chestnut"
+    horses: list[str] = field(default_factory=lambda: ["chestnut"])
+    marks: str = "none"
+    tack: str = "saddle"
+    hsize: str = "normal"
 
     @property
     def animated(self) -> bool:
@@ -174,9 +273,16 @@ class RenderSettings:
     def any_animated(self) -> bool:
         return any(a != "none" for a in self.anims)
 
-    def variant(self, anim: str) -> "RenderSettings":
+    @property
+    def coats(self) -> list[str | None]:
+        """The coats every item is made in (one None when there is no horse)."""
+        return list(self.horses) if self.mount != "none" else [None]
+
+    def variant(self, anim: str, horse: str | None = None) -> "RenderSettings":
         """Settings for one concrete item."""
-        return self.copy(anim=anim, anims=[anim])
+        if horse is None:
+            return self.copy(anim=anim, anims=[anim])
+        return self.copy(anim=anim, anims=[anim], horse=horse, horses=[horse])
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -192,13 +298,23 @@ class RenderSettings:
                 setattr(s, k, v)
         # sanitise anything stale or tampered with
         defaults = cls()
-        for g in ("style", "body", "pose", "bust", "anim", "cam", "mode", "outline", "speed"):
+        for g in ("style", "body", "pose", "bust", "anim", "cam", "mode", "outline", "speed",
+                  "mount", "horse", "marks", "tack", "hsize"):
             if getattr(s, g) not in {o.key for o in GROUPS[g]}:
                 setattr(s, g, getattr(defaults, g))
         s.hidden = [p for p in (s.hidden or []) if p in PART_KEYS]
+        # animations belong to the mount: player clips on foot, horse clips with a horse
+        valid = anim_options(s.mount)
+        keys = {o.key for o in valid}
+        if s.anim not in keys:
+            s.anim = (TO_HORSE if s.mount != "none" else FROM_HORSE).get(s.anim, "none")
         # settings saved before multi-select had no "anims": they meant just their one anim
         chosen = set(d.get("anims") or []) if isinstance(d.get("anims"), list) else set()
-        s.anims = [o.key for o in ANIMATIONS if o.key in chosen] or [s.anim]
+        s.anims = [o.key for o in valid if o.key in chosen] or [s.anim]
+        coats = set(d.get("horses") or []) if isinstance(d.get("horses"), list) else set()
+        s.horses = [o.key for o in COATS if o.key in coats] or [s.horse]
+        if s.horse not in s.horses:
+            s.horse = s.horses[0]
         if not isinstance(s.emoji, str) or not s.emoji or len(s.emoji) > 16:
             s.emoji = "🙂"
         return s
@@ -213,10 +329,13 @@ class RenderSettings:
             f"Стиль: {opt('style', self.style).ru}",
             f"Тело: {opt('body', self.body).ru}",
         ]
+        if self.mount != "none":
+            parts.append(f"{opt('mount', self.mount).ru}: {opt('horse', self.horse).ru.lower()}")
         if self.animated:
             parts.append(f"Анимация: {opt('anim', self.anim).ru}")
-        else:
+        elif self.mount != "solo":
             parts.append(f"Поза: {opt('pose', self.pose).ru}")
-        parts.append(f"Кадр: {opt('bust', self.bust).ru}")
+        if self.mount == "none":
+            parts.append(f"Кадр: {opt('bust', self.bust).ru}")
         parts.append(f"Камера: {opt('cam', self.cam).ru}")
         return ", ".join(parts)

@@ -14,7 +14,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .model import GROUP_PRIORITY, HEAD, STYLES, Part, Style
+from . import horse as _horse
+from .model import FACE_NAMES, GROUP_PRIORITY, H_HEAD, HEAD, STYLES, Joint, Part, Style
+from .model import face_frame as _face_frame
 from .options import FOURS_ANIMATIONS, RenderSettings
 from .pose import ANIMS, Pose, anim_pose, pose_fours, static_pose
 from .skin import Skin, box_faces
@@ -25,6 +27,7 @@ MAX_SECONDS = 3.0
 SUPERSAMPLE = 4          # smooth mode at emoji size
 SUPERSAMPLE_LARGE = 1    # smooth mode at sticker size (512 px): Telegram shows stickers scaled down anyway
 OBLIQUE = 0.375
+HORSE_YAW = -90.0        # the horse walks towards image-left: its flank is the flat face
 
 
 class RenderError(RuntimeError):
@@ -71,26 +74,6 @@ CAMERAS: dict[str, Camera] = {
     "top": Camera(_rx(90), 0.0, -0.4),
     "bottom": Camera(_rz(180) @ _rx(-90), 0.0, -0.4),
 }
-
-# face -> (origin corner, U edge, V edge, outward normal) as functions of the box
-FACE_NAMES = ("front", "back", "right", "left", "top", "bottom")
-
-
-def _face_frame(name: str, lo, size):
-    x0, y0, z0 = lo
-    w, h, d = size
-    if name == "front":
-        return (x0, y0 + h, z0 + d), (w, 0, 0), (0, -h, 0), (0, 0, 1)
-    if name == "back":
-        return (x0 + w, y0 + h, z0), (-w, 0, 0), (0, -h, 0), (0, 0, -1)
-    if name == "right":
-        return (x0, y0 + h, z0), (0, 0, d), (0, -h, 0), (-1, 0, 0)
-    if name == "left":
-        return (x0 + w, y0 + h, z0 + d), (0, 0, -d), (0, -h, 0), (1, 0, 0)
-    if name == "top":
-        return (x0, y0 + h, z0), (w, 0, 0), (0, 0, d), (0, 1, 0)
-    return (x0, y0, z0), (w, 0, 0), (0, 0, d), (0, -1, 0)
-
 
 def _box_corners(lo, size) -> np.ndarray:
     x0, y0, z0 = lo
@@ -159,16 +142,35 @@ class Rig:
         else:
             slim = settings.body == "alex"
         self.slim = slim
-        self.parts = self.style.slim if slim else self.style.wide
-        self.joints = self.style.slim_joints if slim else self.style.joints
+        self.horse = None
+        self.rider = settings.mount != "solo"
+        # with a horse the whole figure is always shown: a bust of a rider makes no sense
+        self.bust = settings.bust if settings.mount == "none" else "full"
+        parts: list[Part] = []
+        joints: dict[str, Joint] = {}
+        if self.rider:
+            parts += self.style.slim if slim else self.style.wide
+            joints.update(self.style.slim_joints if slim else self.style.joints)
+        if settings.mount != "none":
+            self.horse = _horse.build(settings.hsize, settings.horse, settings.tack)
+            if self.rider:
+                # the rider hangs from the saddle and moves with the horse's body
+                joints["root"] = Joint("h.seat", joints["root"].pivot)
+            joints.update(self.horse.joints)
+            parts += self.horse.parts
+        self.parts, self.joints = parts, joints
         hidden = set(settings.hidden)
         self.textures = {}
         for p in self.parts:
-            if settings.bust == "head" and p.group != HEAD:
+            if p.uv is None and p.uv_over is None:
+                continue  # horse parts are painted below
+            if self.bust == "head" and p.group != HEAD:
                 continue
             tex = part_textures(skin, p, hidden)
             if tex is not None:
                 self.textures[p.key] = tex
+        if self.horse is not None:
+            self.textures.update(_horse.textures(self.horse, settings.horse, settings.marks, settings.tack))
         if not self.textures:
             raise RenderError("все части скрыты — нечего рисовать")
         self.cam = CAMERAS.get(settings.cam, CAMERAS["34r"])
@@ -176,6 +178,12 @@ class Rig:
     # -- poses
     def poses(self) -> tuple[list[Pose], int]:
         s = self.settings
+        if self.horse is not None:
+            key = s.anim if s.animated and s.anim in _horse.HORSE_ANIMS else None
+            if key is None:
+                return [self._scene_pose(None, 0.0)], FPS
+            n = self._frame_count(_horse.HORSE_ANIMS[key][0])
+            return [self._scene_pose(key, i / n) for i in range(n)], FPS
         if s.animated and s.anim in ANIMS:
             period, _ = ANIMS[s.anim]
             try:
@@ -191,6 +199,40 @@ class Rig:
         if s.pose == "fours":
             return [pose_fours(self.style)], FPS
         return [static_pose(s.pose, self.style)], FPS
+
+    def _frame_count(self, period: float) -> int:
+        try:
+            speed = float(self.settings.speed)
+        except ValueError:
+            speed = 1.0
+        speed = min(4.0, max(0.25, speed))
+        return max(2, round(min(period / speed, MAX_SECONDS) * FPS))
+
+    def _face_turn(self) -> float:
+        """Yaw that turns the rider's head straight at the camera (0 if it would look behind)."""
+        cam_rot = self.cam.rot @ _ry(HORSE_YAW)
+        d = cam_rot.T @ np.array([0.0, 0.0, 1.0])
+        if abs(d[0]) < 1e-6 and abs(d[2]) < 1e-6:
+            return 0.0
+        turn = math.degrees(math.atan2(d[0], d[2]))
+        return turn if abs(turn) <= 100 else 0.0
+
+    def _scene_pose(self, key: str | None, t: float) -> Pose:
+        sc = _horse.scene(key, t, self.style, self.settings.pose)
+        p = Pose(rot=dict(sc.horse.rot), off=dict(sc.horse.off), lift=sc.horse.lift,
+                 spin=HORSE_YAW + sc.horse.spin)
+        if self.rider:
+            r = sc.rider
+            p.rot.update(r.rot)
+            p.off.update(r.off)
+            sx, sy, sz = self.horse.seat
+            rx, ry, rz = r.off.get("root", (0.0, 0.0, 0.0))
+            p.off["root"] = (rx + sx, ry + sy - self.style.hip_y, rz + sz)
+            p.rot["h.seat"] = (sc.lean, 0.0, 0.0)
+            _horse.ride_legs(p, self.horse)
+            hx, hy, hz = p.rot.get("head", (0.0, 0.0, 0.0))
+            p.rot["head"] = (hx, hy + self._face_turn(), hz)
+        return p
 
     def _joint_mats(self, pose: Pose) -> dict[str, np.ndarray]:
         mats: dict[str, np.ndarray] = {}
@@ -228,8 +270,9 @@ class Rig:
 
     def head_anchor(self) -> np.ndarray:
         """Camera-frame corner of the head box in the neutral pose (for pixel snapping)."""
-        mats, shift, cam_rot = self._placement(Pose())
-        head = next(p for p in self.parts if p.group == HEAD)
+        mats, shift, cam_rot = self._placement(self._scene_pose(None, 0.0) if self.horse is not None else Pose())
+        head = next((p for p in self.parts if p.group == HEAD),
+                    next((p for p in self.parts if p.group == H_HEAD), self.parts[0]))
         m = mats[head.joint]
         return cam_rot @ (m[:3, :3] @ np.array(head.lo, float) + m[:3, 3] + shift)
 
@@ -247,8 +290,14 @@ class Rig:
             return float(-(c @ view))
 
         far = {}
-        piv = {k: mats[k][:3, :3] @ np.array(self.joints[k].pivot) + mats[k][:3, 3] for k in ("rarm", "larm", "rleg", "lleg")}
-        for a, b, fac in (("rarm", "larm", style.far_arm), ("rleg", "lleg", style.far_leg)):
+        pairs = []
+        if self.rider:
+            pairs += [("rarm", "larm", style.far_arm), ("rleg", "lleg", style.far_leg)]
+        if self.horse is not None:
+            pairs += [("h.fr", "h.fl", style.far_leg), ("h.br", "h.bl", style.far_leg)]
+        piv = {k: mats[k][:3, :3] @ np.array(self.joints[k].pivot) + mats[k][:3, 3]
+               for a, b, _ in pairs for k in (a, b)}
+        for a, b, fac in pairs:
             da, db = depth_of(piv[a]), depth_of(piv[b])
             if da > db + 0.5:
                 far[a] = fac
@@ -283,9 +332,9 @@ class Rig:
                 quads.append(Quad(o_c, u_c, v_c, ftex, float(shade), p.group))
 
         cut = None
-        if self.settings.bust in ("half", "portrait"):
+        if self.bust in ("half", "portrait"):
             body_m = mats["body"]
-            if self.settings.bust == "half":
+            if self.bust == "half":
                 local = np.array([0.0, style.hip_y, 0.0])
             else:
                 local = np.array([0.0, style.neck_y - 0.45 * style.body_h, 0.0])
@@ -378,7 +427,7 @@ def _neighbor(a: np.ndarray, dx: int, dy: int, fill) -> np.ndarray:
     return out
 
 
-_PRIO = np.zeros(8, np.int8)
+_PRIO = np.zeros(16, np.int8)
 for _g, _p in GROUP_PRIORITY.items():
     _PRIO[_g] = _p
 _DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1))
@@ -388,7 +437,7 @@ def _behind_mask(cv: Canvas, dist: int, dirs=_DIRS) -> np.ndarray:
     """Pixels that touch (within dist) a different part lying in front of them."""
     ids, dep = cv.ids, cv.depth
     own = ids >= 0
-    pr = _PRIO[np.clip(ids, 0, 7)]
+    pr = _PRIO[np.clip(ids, 0, 15)]
     mask = np.zeros(ids.shape, bool)
     with np.errstate(invalid="ignore"):
         _behind_loop(ids, dep, own, pr, mask, dist, dirs)
@@ -400,7 +449,7 @@ def _behind_loop(ids, dep, own, pr, mask, dist, dirs) -> None:
         for dx, dy in dirs:
             qi = _neighbor(ids, dx * k, dy * k, -1)
             qd = _neighbor(dep, dx * k, dy * k, np.inf)
-            qp = _PRIO[np.clip(qi, 0, 7)]
+            qp = _PRIO[np.clip(qi, 0, 15)]
             front = (qd < dep - 1e-3) | ((np.abs(qd - dep) <= 1e-3) & (qp > pr))
             mask |= own & (qi >= 0) & (qi != ids) & front
 
@@ -498,7 +547,8 @@ def render(skin: Skin, settings: RenderSettings, size: int = EMOJI_SIZE) -> Rend
         g, k = f * ss, 1
         width = max(1, round(ow * g * 0.7)) if ow else 0
     else:
-        g, k = _pick_scale(extent, style.head_texel, size)
+        # with a horse every unit is a texel (its coat, the rider's body): keep them all whole pixels
+        g, k = _pick_scale(extent, 1.0 if rig.horse is not None else style.head_texel, size)
         width = max(1, round(ow * g)) if ow else 0
 
     pad = width + 3

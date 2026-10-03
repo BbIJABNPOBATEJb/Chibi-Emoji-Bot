@@ -54,6 +54,10 @@ def job_result(skin_png: bytes, slim: bool | None, settings: dict, size: int = 1
     return previews.result_preview(skin, RenderSettings.from_dict(settings), size)
 
 
+def job_news_example(skin_png: bytes) -> tuple[bytes, str]:
+    return previews.news_example(load_skin(skin_png))
+
+
 def job_overview(thumbs: list[tuple[str, bytes | None, bool]], title: str | None) -> bytes:
     return previews.overview_sheet(thumbs, title)
 
